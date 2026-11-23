@@ -116,6 +116,12 @@ export const Footer: React.FC = () => {
                   <span>Reserve Direct</span>
                 </Link>
               </li>
+              <li>
+                <Link href="/contact" className="hover:text-[#FDF8EE] hover:translate-x-1 inline-flex items-center gap-1.5 transition-all">
+                  <span className="text-[#FDF8EE]/60">&rsaquo;</span>
+                  <span>Contact Concierge</span>
+                </Link>
+              </li>
             </ul>
           </div>
 

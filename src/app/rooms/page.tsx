@@ -131,7 +131,7 @@ async function RoomsContent({ searchParams }: RoomsPageProps) {
           </div>
           <div className="flex items-center space-x-4">
             <Link
-              href="/#contact"
+              href="/contact"
               className="px-6 py-3 rounded-md bg-[#380608] border border-[#B08D57]/60 hover:bg-[#C59B63] hover:text-[#4A0A0C] text-[#FAF8F3] font-medium text-sm tracking-wide transition-all flex items-center space-x-2"
             >
               <span>Contact Us</span>

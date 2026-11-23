@@ -788,7 +788,7 @@ function BookRoomForm() {
                 </p>
               </div>
               <Link
-                href="/#contact"
+                href="/contact"
                 className="px-5 py-2 rounded-lg border border-[#B08D57] bg-white hover:bg-[#670E10] hover:text-[#FAF8F3] text-[#670E10] font-medium text-xs tracking-wide transition-all shrink-0"
               >
                 Contact Us

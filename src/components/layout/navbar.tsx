@@ -274,7 +274,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       href: '/restaurant',
     },
     { label: 'MENU', href: '/menu' },
-    { label: 'CONTACT', href: '/#contact' },
+    { label: 'CONTACT', href: '/contact' },
   ];
 
   return (
