@@ -7,7 +7,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Menu,
   X,
-  Globe,
   ChevronDown,
   ArrowRight,
   User as UserIcon,
@@ -73,7 +72,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMenuClosing, setIsMenuClosing] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [language, setLanguage] = useState<'Eng' | 'हिन्दी'>('Eng');
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [isStaff, setIsStaff] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -366,17 +364,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* ── 3. Right: Desktop Action Pills ── */}
           <div className="hidden sm:flex items-center space-x-2.5 md:space-x-3 shrink-0">
-
-            {/* Language Selector Pill */}
-            <button
-              type="button"
-              onClick={() => setLanguage(language === 'Eng' ? 'हिन्दी' : 'Eng')}
-              className="hidden xl:inline-flex items-center space-x-1 px-3 py-1.5 rounded-full bg-white hover:bg-[#cccccc]/95 border border-[#4F0809]/15 text-xs font-semibold text-[#4F0809] transition cursor-pointer"
-              title="Toggle Language"
-            >
-              <Globe className="w-3 h-3 text-[#4F0809]" />
-              <span>{language}</span>
-            </button>
 
             {/* Staff Admin Panel Badge Button */}
             {user && isStaff && (
@@ -699,16 +686,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
 
                 {/* Footer in Mobile Menu */}
-                <div className="mt-3.5 pt-3.5 border-t border-[#4F0809]/10 flex items-center justify-between text-xs px-2">
-                  <button
-                    type="button"
-                    onClick={() => setLanguage(language === 'Eng' ? 'हिन्दी' : 'Eng')}
-                    className="flex items-center space-x-1.5 text-[#4F0809]/80 hover:text-[#4F0809] font-medium py-1 cursor-pointer transition-colors"
-                  >
-                    <Globe className="w-3.5 h-3.5 text-[#4F0809]" />
-                    <span>Language: {language}</span>
-                  </button>
-
+                <div className="mt-3.5 pt-3.5 border-t border-[#4F0809]/10 flex items-center justify-end text-xs px-2">
                   {user ? (
                     <button
                       type="button"
