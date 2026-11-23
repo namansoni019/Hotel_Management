@@ -382,7 +382,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <div className="pl-7 pr-1 py-1 space-y-0.5">
                   {[
                     { label: 'All Orders', href: '/dashboard/orders?tab=all' },
-                    { label: '+ New Order', href: '/dashboard/pos' },
                     { label: 'Dine-in Orders', href: '/dashboard/orders?tab=dine_in' },
                     { label: 'Room Service Orders', href: '/dashboard/orders?tab=room_service' },
                     { label: 'Online Delivery', href: '/dashboard/orders?tab=delivery' },

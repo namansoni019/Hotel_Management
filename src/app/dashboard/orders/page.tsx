@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
   ShoppingBag,
@@ -24,7 +23,6 @@ import {
   User,
   MapPin,
   Check,
-  Plus,
 } from 'lucide-react';
 import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -219,13 +217,6 @@ function OrdersContent() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href="/dashboard/pos"
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#4F0809] hover:bg-[#680b0c] text-white text-xs font-bold shadow-xs transition cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5 text-[#D8AA67]" />
-            <span>New Order</span>
-          </Link>
           <button
             onClick={loadData}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E8DCD2] bg-white text-[#4F0809] hover:bg-[#F6EAE0] text-xs font-medium shadow-xs transition cursor-pointer"
@@ -235,7 +226,7 @@ function OrdersContent() {
           </button>
           <button
             onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E8DCD2] bg-white text-[#4F0809] hover:bg-[#F6EAE0] text-xs font-medium shadow-xs transition cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#4F0809] hover:bg-[#6B1518] text-white text-xs font-semibold shadow-xs transition cursor-pointer"
           >
             <Download className="w-3.5 h-3.5 text-[#D8AA67]" />
             Export Orders CSV
