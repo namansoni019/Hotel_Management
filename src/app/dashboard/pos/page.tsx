@@ -540,7 +540,7 @@ export default function POSBillingPage() {
           </p>
         </div>
 
-        {/* 4 Order Type Pills & + New Order Button */}
+        {/* 4 Order Type Pills */}
         <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex rounded-xl p-1 bg-[#FBF6EF] border border-[#E8DCD2] gap-1">
             {[
@@ -567,14 +567,6 @@ export default function POSBillingPage() {
               );
             })}
           </div>
-
-          <button
-            onClick={handleResetNewOrder}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-[#E8DCD2] bg-white text-[#4F0809] hover:bg-[#FBF6EF] text-xs font-semibold shadow-2xs transition cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5 text-[#B78A48]" />
-            <span>New Order</span>
-          </button>
         </div>
       </div>
 
