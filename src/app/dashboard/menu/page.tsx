@@ -98,6 +98,13 @@ export default function MenuBuilderPage() {
   const [newCatName, setNewCatName] = useState('');
   const [newCatOutlet, setNewCatOutlet] = useState<'e0000000-0000-0000-0000-000000000001' | 'e0000000-0000-0000-0000-000000000002'>('e0000000-0000-0000-0000-000000000001');
 
+  // Form state for Edit Category
+  const [isEditCatModalOpen, setIsEditCatModalOpen] = useState(false);
+  const [editingCatId, setEditingCatId] = useState('');
+  const [editCatName, setEditCatName] = useState('');
+  const [editCatOutlet, setEditCatOutlet] = useState<'e0000000-0000-0000-0000-000000000001' | 'e0000000-0000-0000-0000-000000000002'>('e0000000-0000-0000-0000-000000000001');
+  const [editCatSubmitting, setEditCatSubmitting] = useState(false);
+
   // Category menu dropdown state
   const [openCatMenuId, setOpenCatMenuId] = useState<string | null>(null);
 
@@ -532,6 +539,47 @@ export default function MenuBuilderPage() {
     }
   };
 
+  const handleOpenEditCategory = (cat: MenuCategory) => {
+    setEditingCatId(cat.id);
+    setEditCatName(cat.name);
+    setEditCatOutlet(
+      (cat.outlet_id === 'e0000000-0000-0000-0000-000000000002' || cat.id.includes('cafe'))
+        ? 'e0000000-0000-0000-0000-000000000002'
+        : 'e0000000-0000-0000-0000-000000000001'
+    );
+    setIsEditCatModalOpen(true);
+    setOpenCatMenuId(null);
+  };
+
+  const handleUpdateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editCatName.trim() || !editingCatId) return;
+
+    setEditCatSubmitting(true);
+    try {
+      const res = await fetch('/api/menu/categories', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingCatId,
+          name: editCatName.trim(),
+          outlet_id: editCatOutlet,
+        }),
+      });
+      if (res.ok) {
+        showToast('success', `Category "${editCatName.trim()}" updated`);
+        setIsEditCatModalOpen(false);
+        loadMenu();
+      } else {
+        throw new Error();
+      }
+    } catch {
+      showToast('error', 'Failed to update category');
+    } finally {
+      setEditCatSubmitting(false);
+    }
+  };
+
   const handleDeleteCategory = async (catId: string, catName: string) => {
     if (!confirm(`Are you sure you want to delete category "${catName}" and its items?`)) return;
     try {
@@ -785,26 +833,48 @@ export default function MenuBuilderPage() {
                       {itemCount}
                     </span>
 
+                    {/* Quick Edit icon on hover */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenEditCategory(cat);
+                      }}
+                      title="Edit Category"
+                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-white text-[#81736D] hover:text-[#4F0809] transition cursor-pointer"
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-[#B78A48]" />
+                    </button>
+
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setOpenCatMenuId(openCatMenuId === cat.id ? null : cat.id);
                       }}
-                      className="p-1 rounded hover:bg-white text-[#81736D] hover:text-[#4F0809]"
+                      className="p-1 rounded hover:bg-white text-[#81736D] hover:text-[#4F0809] cursor-pointer"
                     >
                       <MoreVertical className="w-3.5 h-3.5" />
                     </button>
 
                     {/* Context Menu for Category */}
                     {openCatMenuId === cat.id && (
-                      <div className="absolute right-2 top-10 w-36 bg-white border border-[#E8DCD2] rounded-xl shadow-xl py-1 z-30 text-xs">
+                      <div className="absolute right-2 top-10 w-38 bg-white border border-[#E8DCD2] rounded-xl shadow-xl py-1 z-30 text-xs animate-in fade-in zoom-in-95 duration-100">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenEditCategory(cat);
+                          }}
+                          className="w-full text-left px-3 py-2 text-[#302421] hover:bg-[#FBF6EF] flex items-center gap-2 cursor-pointer font-medium transition"
+                        >
+                          <Pencil className="w-3.5 h-3.5 text-[#B78A48]" />
+                          <span>Edit Category</span>
+                        </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setOpenCatMenuId(null);
                             handleDeleteCategory(cat.id, cat.name);
                           }}
-                          className="w-full text-left px-3 py-1.5 text-red-600 hover:bg-red-50 flex items-center gap-1.5"
+                          className="w-full text-left px-3 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2 cursor-pointer font-medium border-t border-[#E8DCD2]/50 transition"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                           <span>Delete Category</span>
@@ -1725,8 +1795,8 @@ export default function MenuBuilderPage() {
 
       {/* ── Modal: Add Category ── */}
       {isAddCatModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-[#E8DCD2] max-w-sm w-full p-5 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-[#E8DCD2] max-w-sm w-full p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-[#E8DCD2] pb-3">
               <h2
                 className="text-lg font-bold text-[#4F0809]"
@@ -1736,7 +1806,7 @@ export default function MenuBuilderPage() {
               </h2>
               <button
                 onClick={() => setIsAddCatModalOpen(false)}
-                className="p-1 rounded-full text-[#81736D] hover:text-[#4F0809] hover:bg-[#FBF6EF]"
+                className="p-1 rounded-full text-[#81736D] hover:text-[#4F0809] hover:bg-[#FBF6EF] transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1745,7 +1815,7 @@ export default function MenuBuilderPage() {
             <form onSubmit={handleCreateCategory} className="space-y-3.5 text-xs">
               <div>
                 <label className="block text-[11px] font-semibold text-[#4F0809] mb-1">
-                  Category Name *
+                  Category Name <span className="text-rose-600">*</span>
                 </label>
                 <input
                   type="text"
@@ -1753,7 +1823,7 @@ export default function MenuBuilderPage() {
                   value={newCatName}
                   onChange={(e) => setNewCatName(e.target.value)}
                   placeholder="e.g. Tandoori Breads & Naan"
-                  className="w-full px-3 py-2 rounded-xl border border-[#E8DCD2] bg-[#FBF6EF]/50 focus:bg-white focus:outline-none focus:border-[#4F0809]"
+                  className="w-full px-3 py-2 rounded-xl border border-[#E8DCD2] bg-[#FBF6EF]/50 focus:bg-white focus:outline-none focus:border-[#4F0809] text-[#302421] font-medium"
                 />
               </div>
 
@@ -1764,7 +1834,7 @@ export default function MenuBuilderPage() {
                 <select
                   value={newCatOutlet}
                   onChange={(e) => setNewCatOutlet(e.target.value as any)}
-                  className="w-full px-3 py-2 rounded-xl border border-[#E8DCD2] bg-[#FBF6EF]/50 focus:bg-white focus:outline-none focus:border-[#4F0809]"
+                  className="w-full px-3 py-2 rounded-xl border border-[#E8DCD2] bg-[#FBF6EF]/50 focus:bg-white focus:outline-none focus:border-[#4F0809] text-[#302421] font-medium"
                 >
                   <option value="e0000000-0000-0000-0000-000000000001">
                     Rajmahal Royal Dining (Restaurant)
@@ -1779,15 +1849,95 @@ export default function MenuBuilderPage() {
                 <button
                   type="button"
                   onClick={() => setIsAddCatModalOpen(false)}
-                  className="px-3.5 py-1.5 rounded-xl border border-[#E8DCD2] text-[#81736D] hover:bg-[#FBF6EF] font-semibold"
+                  className="px-3.5 py-1.5 rounded-xl border border-[#E8DCD2] text-[#81736D] hover:bg-[#FBF6EF] font-semibold transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-3.5 py-1.5 rounded-xl bg-[#4F0809] hover:bg-[#680b0c] text-white font-semibold"
+                  className="px-3.5 py-1.5 rounded-xl bg-[#4F0809] hover:bg-[#680b0c] text-white font-semibold transition cursor-pointer"
                 >
                   Create Category
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Edit Category ── */}
+      {isEditCatModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-[#E8DCD2] max-w-sm w-full p-5 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between border-b border-[#E8DCD2] pb-3">
+              <h2
+                className="text-lg font-bold text-[#4F0809]"
+                style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+              >
+                Edit Menu Category
+              </h2>
+              <button
+                onClick={() => setIsEditCatModalOpen(false)}
+                className="p-1 rounded-full text-[#81736D] hover:text-[#4F0809] hover:bg-[#FBF6EF] transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateCategory} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-[11px] font-semibold text-[#4F0809] mb-1">
+                  Category Name <span className="text-rose-600">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editCatName}
+                  onChange={(e) => setEditCatName(e.target.value)}
+                  placeholder="e.g. Royal Breads & Naan"
+                  className="w-full px-3 py-2 rounded-xl border border-[#E8DCD2] bg-[#FBF6EF]/50 focus:bg-white focus:outline-none focus:border-[#4F0809] text-[#302421] font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-[#4F0809] mb-1">
+                  Assign to Palace Outlet
+                </label>
+                <select
+                  value={editCatOutlet}
+                  onChange={(e) => setEditCatOutlet(e.target.value as any)}
+                  className="w-full px-3 py-2 rounded-xl border border-[#E8DCD2] bg-[#FBF6EF]/50 focus:bg-white focus:outline-none focus:border-[#4F0809] text-[#302421] font-medium"
+                >
+                  <option value="e0000000-0000-0000-0000-000000000001">
+                    Rajmahal Royal Dining (Restaurant)
+                  </option>
+                  <option value="e0000000-0000-0000-0000-000000000002">
+                    The Palace Courtyard Café &amp; Lounge
+                  </option>
+                </select>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-[#E8DCD2]">
+                <button
+                  type="button"
+                  onClick={() => setIsEditCatModalOpen(false)}
+                  className="px-3.5 py-1.5 rounded-xl border border-[#E8DCD2] text-[#81736D] hover:bg-[#FBF6EF] font-semibold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editCatSubmitting || !editCatName.trim()}
+                  className="px-4 py-1.5 rounded-xl bg-[#4F0809] hover:bg-[#680b0c] text-white font-semibold transition cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
+                >
+                  {editCatSubmitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#B78A48]" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <span>Save Changes</span>
+                  )}
                 </button>
               </div>
             </form>

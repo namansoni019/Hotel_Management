@@ -223,6 +223,19 @@ export const menuService = {
     }
   },
 
+  async updateCategory(catId: string, updates: Partial<MenuCategory>): Promise<MenuCategory | null> {
+    try {
+      const catRef = doc(db, 'menu_categories', catId);
+      await updateDoc(catRef, {
+        ...updates,
+        updated_at: serverTimestamp(),
+      });
+    } catch (err) {
+      console.warn('Firestore updateCategory fallback:', err);
+    }
+    return dataRepository.updateCategory(catId, updates);
+  },
+
   async deleteCategory(catId: string): Promise<boolean> {
     try {
       const catRef = doc(db, 'menu_categories', catId);

@@ -446,6 +446,14 @@ export const dataRepository = {
     menuCategoriesState.push(newCat);
     return newCat;
   },
+  updateCategory(catId: string, updates: Partial<MenuCategory>): MenuCategory | null {
+    const cat = menuCategoriesState.find((c) => c.id === catId);
+    if (cat) {
+      Object.assign(cat, updates);
+      return cat;
+    }
+    return null;
+  },
   deleteCategory(catId: string): boolean {
     const idx = menuCategoriesState.findIndex((c) => c.id === catId);
     if (idx !== -1) {
