@@ -1106,80 +1106,88 @@ export default function MenuBuilderPage() {
         </div>
       </div>
 
-      {/* ── Modal: Add / Edit Item (Matching reference screenshots) ── */}
+      {/* ── Modal: Add / Edit Item (Styled matching Rajmahal Heritage Grand Theme) ── */}
       {(isAddItemModalOpen || isEditItemModalOpen) && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl border border-[#E2E8F0] max-w-md w-full shadow-2xl flex flex-col max-h-[92vh] overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-2xl sm:rounded-3xl border border-[#E8DCD2] max-w-lg w-full shadow-2xl flex flex-col max-h-[92vh] overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4.5 border-b border-[#F1F5F9] shrink-0">
-              <h2 className="text-xl font-bold text-[#1E293B] tracking-tight">
-                {formItemId ? 'Edit Menu Item' : 'Add Menu Item'}
-              </h2>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#E8DCD2] bg-[#FBF6EF]/50 shrink-0">
+              <div>
+                <h2
+                  className="text-xl font-bold text-[#4F0809] tracking-wide"
+                  style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+                >
+                  {formItemId ? 'Edit Menu Item' : 'Add New Menu Item'}
+                </h2>
+                <p className="text-[11px] text-[#81736D] mt-0.5">
+                  {formItemId ? 'Update dish details, pricing, and portions' : 'Add a royal delicacy to your restaurant or café menu'}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => {
                   setIsAddItemModalOpen(false);
                   setIsEditItemModalOpen(false);
                 }}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-[#64748B] hover:text-[#0F172A] hover:bg-[#F1F5F9] transition cursor-pointer"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-[#81736D] hover:text-[#4F0809] hover:bg-[#FBF6EF] transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Modal Scrollable Body */}
-            <form onSubmit={handleSaveItem} className="flex-1 overflow-y-auto px-6 py-4 space-y-4 text-xs">
+            <form onSubmit={handleSaveItem} className="flex-1 overflow-y-auto px-6 py-5 space-y-4 text-xs">
               {/* Menu * */}
               <div>
-                <label className="block text-xs font-semibold text-[#1E293B] mb-1.5">
-                  Menu <span className="text-rose-500">*</span>
+                <label className="block text-xs font-semibold text-[#4F0809] mb-1.5">
+                  Menu <span className="text-rose-600">*</span>
                 </label>
                 <div className="relative">
                   <select
                     value={formMenuOutlet}
                     onChange={(e) => setFormMenuOutlet(e.target.value as any)}
-                    className="w-full appearance-none px-3.5 py-2.5 rounded-xl border border-[#CBD5E1] bg-white text-xs font-medium text-[#1E293B] focus:border-[#4F0809] focus:outline-none pr-9 cursor-pointer shadow-xs"
+                    className="w-full appearance-none px-3.5 py-2.5 rounded-xl border border-[#E8DCD2] bg-[#FBF6EF]/40 text-xs font-medium text-[#302421] focus:bg-white focus:border-[#4F0809] focus:outline-none pr-9 cursor-pointer transition shadow-2xs"
                   >
                     <option value="e0000000-0000-0000-0000-000000000001">Main Menu (Restaurant)</option>
                     <option value="e0000000-0000-0000-0000-000000000002">The Palace Courtyard Café &amp; Lounge</option>
                   </select>
-                  <ChevronDown className="w-4 h-4 text-[#64748B] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <ChevronDown className="w-4 h-4 text-[#81736D] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
               </div>
 
               {/* Category * with Dropdown & Inline Create Category */}
               <div className="relative" ref={categoryDropdownRef}>
-                <label className="block text-xs font-semibold text-[#1E293B] mb-1.5">
-                  Category <span className="text-rose-500">*</span>
+                <label className="block text-xs font-semibold text-[#4F0809] mb-1.5">
+                  Category <span className="text-rose-600">*</span>
                 </label>
                 
                 {/* Trigger button */}
                 <button
                   type="button"
                   onClick={() => setIsCategoryDropdownOpen((prev) => !prev)}
-                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-xs font-medium transition cursor-pointer shadow-xs ${
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-xs font-medium transition cursor-pointer shadow-2xs ${
                     isCategoryDropdownOpen
-                      ? 'border-[#2563EB] ring-2 ring-[#2563EB]/20 bg-white'
-                      : 'border-[#CBD5E1] bg-white hover:border-[#94A3B8] text-[#1E293B]'
+                      ? 'border-[#4F0809] ring-2 ring-[#4F0809]/15 bg-white text-[#302421]'
+                      : 'border-[#E8DCD2] bg-[#FBF6EF]/40 hover:bg-white text-[#302421]'
                   }`}
                 >
-                  <span className={formCategoryId ? 'text-[#1E293B] font-semibold' : 'text-[#94A3B8]'}>
+                  <span className={formCategoryId ? 'text-[#302421] font-semibold' : 'text-[#81736D]'}>
                     {categories.find((c) => c.id === formCategoryId)?.name || 'Select Category'}
                   </span>
                   {isCategoryDropdownOpen ? (
-                    <ChevronUp className="w-4 h-4 text-[#2563EB]" />
+                    <ChevronUp className="w-4 h-4 text-[#4F0809]" />
                   ) : (
-                    <ChevronDown className="w-4 h-4 text-[#64748B]" />
+                    <ChevronDown className="w-4 h-4 text-[#81736D]" />
                   )}
                 </button>
 
-                {/* Dropdown Menu matching Screenshot 2 */}
+                {/* Dropdown Menu */}
                 {isCategoryDropdownOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-1 z-30 bg-white border border-[#CBD5E1] rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-150">
+                  <div className="absolute top-full left-0 right-0 mt-1 z-30 bg-white border border-[#E8DCD2] rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-150">
                     {/* Inline Create Category Form or Link */}
                     {isInlineCreateCategory ? (
-                      <div className="p-3 bg-[#F8FAFC] border-b border-[#E2E8F0] space-y-2">
-                        <p className="text-[11px] font-bold text-[#1E293B]">New Category Name</p>
+                      <div className="p-3 bg-[#FBF6EF]/60 border-b border-[#E8DCD2] space-y-2">
+                        <p className="text-[11px] font-bold text-[#4F0809]">New Category Name</p>
                         <div className="flex items-center gap-1.5">
                           <input
                             type="text"
@@ -1193,20 +1201,20 @@ export default function MenuBuilderPage() {
                               }
                             }}
                             placeholder="e.g. Traditional Breads"
-                            className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-[#CBD5E1] bg-white focus:outline-none focus:border-[#2563EB]"
+                            className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-[#E8DCD2] bg-white focus:outline-none focus:border-[#4F0809]"
                           />
                           <button
                             type="button"
                             disabled={inlineNewCategorySaving || !inlineNewCategoryName.trim()}
                             onClick={handleCreateInlineCategory}
-                            className="px-3 py-1.5 rounded-lg bg-[#2563EB] text-white text-xs font-semibold hover:bg-[#1D4ED8] disabled:opacity-50 transition cursor-pointer"
+                            className="px-3 py-1.5 rounded-lg bg-[#4F0809] text-white text-xs font-semibold hover:bg-[#680b0c] disabled:opacity-50 transition cursor-pointer"
                           >
                             {inlineNewCategorySaving ? 'Saving...' : 'Add'}
                           </button>
                           <button
                             type="button"
                             onClick={() => setIsInlineCreateCategory(false)}
-                            className="px-2 py-1.5 rounded-lg border border-[#CBD5E1] text-[#64748B] hover:bg-white text-xs cursor-pointer"
+                            className="px-2 py-1.5 rounded-lg border border-[#E8DCD2] text-[#81736D] hover:bg-[#FBF6EF] text-xs cursor-pointer"
                           >
                             Cancel
                           </button>
@@ -1216,15 +1224,15 @@ export default function MenuBuilderPage() {
                       <button
                         type="button"
                         onClick={() => setIsInlineCreateCategory(true)}
-                        className="w-full text-left px-4 py-2.5 text-xs font-semibold text-[#2563EB] hover:bg-[#EFF6FF] border-b border-[#F1F5F9] flex items-center gap-1.5 transition cursor-pointer"
+                        className="w-full text-left px-4 py-2.5 text-xs font-semibold text-[#4F0809] hover:bg-[#FBF6EF] border-b border-[#E8DCD2] flex items-center gap-1.5 transition cursor-pointer"
                       >
-                        <Plus className="w-4 h-4 text-[#2563EB]" />
+                        <Plus className="w-4 h-4 text-[#B78A48]" />
                         <span>Create Category</span>
                       </button>
                     )}
 
                     {/* Category List */}
-                    <div className="max-h-48 overflow-y-auto divide-y divide-[#F1F5F9]">
+                    <div className="max-h-48 overflow-y-auto divide-y divide-[#E8DCD2]/50">
                       {categories.map((c) => (
                         <button
                           key={c.id}
@@ -1233,16 +1241,16 @@ export default function MenuBuilderPage() {
                             setFormCategoryId(c.id);
                             setIsCategoryDropdownOpen(false);
                           }}
-                          className={`w-full text-left px-4 py-2.5 text-xs hover:bg-[#F8FAFC] transition flex items-center justify-between cursor-pointer ${
-                            formCategoryId === c.id ? 'bg-[#F0FDF4] font-bold text-[#15803D]' : 'text-[#334155]'
+                          className={`w-full text-left px-4 py-2.5 text-xs hover:bg-[#FBF6EF]/60 transition flex items-center justify-between cursor-pointer ${
+                            formCategoryId === c.id ? 'bg-[#FBF6EF] font-bold text-[#4F0809]' : 'text-[#302421]'
                           }`}
                         >
                           <span>{c.name}</span>
-                          {formCategoryId === c.id && <Check className="w-3.5 h-3.5 text-[#15803D]" />}
+                          {formCategoryId === c.id && <Check className="w-3.5 h-3.5 text-[#4F0809]" />}
                         </button>
                       ))}
                       {categories.length === 0 && (
-                        <div className="px-4 py-3 text-center text-[#94A3B8]">
+                        <div className="px-4 py-3 text-center text-[#81736D]">
                           No categories yet. Click "+ Create Category" above.
                         </div>
                       )}
@@ -1253,22 +1261,22 @@ export default function MenuBuilderPage() {
 
               {/* Item Name * */}
               <div>
-                <label className="block text-xs font-semibold text-[#1E293B] mb-1.5">
-                  Item Name <span className="text-rose-500">*</span>
+                <label className="block text-xs font-semibold text-[#4F0809] mb-1.5">
+                  Item Name <span className="text-rose-600">*</span>
                 </label>
                 <input
                   type="text"
                   required
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  placeholder="Item Name *"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#CBD5E1] bg-white text-xs font-medium text-[#1E293B] focus:border-[#4F0809] focus:outline-none shadow-xs"
+                  placeholder="e.g. Royal Paneer Angara Tikka"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8DCD2] bg-[#FBF6EF]/40 text-xs font-medium text-[#302421] focus:bg-white focus:border-[#4F0809] focus:outline-none transition shadow-2xs"
                 />
               </div>
 
               {/* Item Photo Box */}
               <div>
-                <label className="block text-xs font-semibold text-[#1E293B] mb-1.5">
+                <label className="block text-xs font-semibold text-[#4F0809] mb-1.5">
                   Item Photo
                 </label>
 
@@ -1285,8 +1293,8 @@ export default function MenuBuilderPage() {
                 />
 
                 {formImageUrl ? (
-                  <div className="relative rounded-2xl overflow-hidden border border-[#CBD5E1] group bg-[#F8FAFC]">
-                    <div className="h-44 w-full overflow-hidden flex items-center justify-center bg-gray-50">
+                  <div className="relative rounded-2xl overflow-hidden border border-[#E8DCD2] group bg-[#FBF6EF]/30">
+                    <div className="h-44 w-full overflow-hidden flex items-center justify-center bg-white">
                       <img
                         src={formImageUrl}
                         alt="Menu Item Preview"
@@ -1298,7 +1306,7 @@ export default function MenuBuilderPage() {
                     </div>
                     {isUploadingImage && (
                       <div className="absolute inset-0 bg-black/40 backdrop-blur-2xs flex items-center justify-center text-white text-xs font-semibold gap-2">
-                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <RefreshCw className="w-4 h-4 animate-spin text-[#B78A48]" />
                         Uploading photo...
                       </div>
                     )}
@@ -1307,15 +1315,15 @@ export default function MenuBuilderPage() {
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isUploadingImage}
-                        className="px-2 py-1 rounded-lg bg-white/90 hover:bg-white text-[#1E293B] text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition shadow-xs"
+                        className="px-2.5 py-1 rounded-lg bg-white/95 hover:bg-white text-[#4F0809] text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition shadow-2xs"
                       >
-                        <Upload className="w-3 h-3 text-[#2563EB]" />
+                        <Upload className="w-3 h-3 text-[#B78A48]" />
                         <span>Change</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setFormImageUrl('')}
-                        className="px-2 py-1 rounded-lg bg-red-600/90 hover:bg-red-600 text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition shadow-xs"
+                        className="px-2.5 py-1 rounded-lg bg-red-600/90 hover:bg-red-600 text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition shadow-2xs"
                       >
                         <Trash2 className="w-3 h-3" />
                         <span>Remove</span>
@@ -1336,22 +1344,25 @@ export default function MenuBuilderPage() {
                       if (file) handleImageFileChange(file);
                     }}
                     onClick={() => fileInputRef.current?.click()}
-                    className={`h-40 rounded-2xl border border-dashed flex flex-col items-center justify-center cursor-pointer transition-all ${
+                    className={`h-36 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all ${
                       dragOver
-                        ? 'border-[#2563EB] bg-[#EFF6FF]'
-                        : 'border-[#CBD5E1] bg-[#F8FAFC] hover:bg-[#F1F5F9] hover:border-[#94A3B8]'
+                        ? 'border-[#4F0809] bg-[#FBF6EF]'
+                        : 'border-[#E8DCD2] bg-[#FBF6EF]/30 hover:bg-[#FBF6EF]/60 hover:border-[#B78A48]'
                     }`}
                   >
-                    <div className="flex flex-col items-center gap-1.5 text-[#64748B]">
+                    <div className="flex flex-col items-center gap-1.5">
                       {isUploadingImage ? (
                         <>
-                          <RefreshCw className="w-6 h-6 animate-spin text-[#2563EB]" />
-                          <span className="text-xs font-semibold text-[#1E293B]">Uploading photo...</span>
+                          <RefreshCw className="w-6 h-6 animate-spin text-[#4F0809]" />
+                          <span className="text-xs font-semibold text-[#4F0809]">Uploading photo...</span>
                         </>
                       ) : (
                         <>
-                          <Plus className="w-6 h-6 text-[#64748B]" />
-                          <span className="text-xs font-medium text-[#64748B]">Add Photo</span>
+                          <div className="w-10 h-10 rounded-full bg-white border border-[#E8DCD2] flex items-center justify-center shadow-2xs">
+                            <Plus className="w-5 h-5 text-[#B78A48]" />
+                          </div>
+                          <span className="text-xs font-semibold text-[#4F0809]">Add Photo</span>
+                          <span className="text-[10px] text-[#81736D]">PNG, JPG, WebP up to 10MB</span>
                         </>
                       )}
                     </div>
@@ -1359,8 +1370,8 @@ export default function MenuBuilderPage() {
                 )}
 
                 {/* Quick Presets */}
-                <div className="mt-2 flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[10px] text-[#64748B]">
-                  <span className="shrink-0 font-medium">Quick select:</span>
+                <div className="mt-2 flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[10px] text-[#81736D]">
+                  <span className="shrink-0 font-medium text-[#4F0809]">Quick presets:</span>
                   {[
                     { label: 'Dal Baati', url: '/images/food/dal-baati.jpg' },
                     { label: 'Laal Maas', url: '/images/food/laal-maas.jpg' },
@@ -1371,7 +1382,7 @@ export default function MenuBuilderPage() {
                       key={preset.url}
                       type="button"
                       onClick={() => setFormImageUrl(preset.url)}
-                      className="px-2 py-0.5 rounded-full border border-[#E2E8F0] bg-white hover:bg-[#F8FAFC] text-[#334155] shrink-0 font-medium transition cursor-pointer"
+                      className="px-2 py-0.5 rounded-full border border-[#E8DCD2] bg-white hover:bg-[#FBF6EF] text-[#302421] shrink-0 font-medium transition cursor-pointer"
                     >
                       {preset.label}
                     </button>
@@ -1381,11 +1392,11 @@ export default function MenuBuilderPage() {
 
               {/* Price (₹) * */}
               <div>
-                <label className="block text-xs font-semibold text-[#1E293B] mb-1.5">
-                  Price (₹) <span className="text-rose-500">*</span>
+                <label className="block text-xs font-semibold text-[#4F0809] mb-1.5">
+                  Price (₹) <span className="text-rose-600">*</span>
                 </label>
                 <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-[#64748B]">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-[#81736D]">
                     ₹
                   </span>
                   <input
@@ -1396,16 +1407,16 @@ export default function MenuBuilderPage() {
                     value={formPrice}
                     onChange={(e) => setFormPrice(e.target.value)}
                     placeholder="e.g. 350.00"
-                    className="w-full pl-8 pr-3.5 py-2.5 rounded-xl border border-[#CBD5E1] bg-white text-xs font-bold text-[#1E293B] focus:border-[#4F0809] focus:outline-none shadow-xs"
+                    className="w-full pl-8 pr-3.5 py-2.5 rounded-xl border border-[#E8DCD2] bg-[#FBF6EF]/40 text-xs font-bold text-[#302421] focus:bg-white focus:border-[#4F0809] focus:outline-none transition shadow-2xs"
                   />
                 </div>
               </div>
 
-              {/* Discount (%) & Preparation Time (mins) - USER REQUESTED FIELDS */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0]">
+              {/* Discount (%) & Preparation Time (mins) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-2xl bg-[#FBF6EF]/50 border border-[#E8DCD2]">
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#1E293B] mb-1 flex items-center gap-1">
-                    <Percent className="w-3 h-3 text-[#2563EB]" />
+                  <label className="block text-[11px] font-semibold text-[#4F0809] mb-1 flex items-center gap-1">
+                    <Percent className="w-3 h-3 text-[#B78A48]" />
                     <span>Discount (%)</span>
                   </label>
                   <input
@@ -1415,7 +1426,7 @@ export default function MenuBuilderPage() {
                     value={formDiscountPercent}
                     onChange={(e) => setFormDiscountPercent(e.target.value)}
                     placeholder="e.g. 10"
-                    className="w-full px-3 py-2 rounded-xl border border-[#CBD5E1] bg-white text-xs font-semibold text-[#1E293B] focus:border-[#2563EB] focus:outline-none"
+                    className="w-full px-3 py-2 rounded-xl border border-[#E8DCD2] bg-white text-xs font-semibold text-[#302421] focus:border-[#4F0809] focus:outline-none shadow-2xs"
                   />
                   {formPrice && parseFloat(formDiscountPercent) > 0 && (
                     <p className="text-[10px] text-emerald-700 font-semibold mt-1">
@@ -1425,8 +1436,8 @@ export default function MenuBuilderPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#1E293B] mb-1 flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-[#D97706]" />
+                  <label className="block text-[11px] font-semibold text-[#4F0809] mb-1 flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-[#B78A48]" />
                     <span>Prep Time (mins)</span>
                   </label>
                   <input
@@ -1435,73 +1446,36 @@ export default function MenuBuilderPage() {
                     value={formPrepTime}
                     onChange={(e) => setFormPrepTime(e.target.value)}
                     placeholder="e.g. 15"
-                    className="w-full px-3 py-2 rounded-xl border border-[#CBD5E1] bg-white text-xs font-semibold text-[#1E293B] focus:border-[#D97706] focus:outline-none"
+                    className="w-full px-3 py-2 rounded-xl border border-[#E8DCD2] bg-white text-xs font-semibold text-[#302421] focus:border-[#4F0809] focus:outline-none shadow-2xs"
                   />
-                  <p className="text-[10px] text-[#64748B] mt-1">Kitchen prep estimate</p>
-                </div>
-              </div>
-
-              {/* Food Dietary Type */}
-              <div>
-                <label className="block text-xs font-semibold text-[#1E293B] mb-1.5">
-                  Dietary Classification
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { label: 'Vegetarian', color: 'border-emerald-500 bg-emerald-50 text-emerald-700' },
-                    { label: 'Non-Vegetarian', color: 'border-rose-500 bg-rose-50 text-rose-700' },
-                    { label: 'Contains Egg', color: 'border-amber-500 bg-amber-50 text-amber-700' },
-                    { label: 'Vegan', color: 'border-teal-500 bg-teal-50 text-teal-700' },
-                  ].map((diet) => {
-                    const isSelected = formDietary.includes(diet.label);
-                    return (
-                      <button
-                        key={diet.label}
-                        type="button"
-                        onClick={() => {
-                          if (isSelected) {
-                            setFormDietary(formDietary.filter((d) => d !== diet.label));
-                          } else {
-                            setFormDietary([...formDietary, diet.label]);
-                          }
-                        }}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition cursor-pointer ${
-                          isSelected
-                            ? diet.color + ' ring-1'
-                            : 'border-[#CBD5E1] bg-white text-[#64748B] hover:bg-[#F8FAFC]'
-                        }`}
-                      >
-                        {diet.label}
-                      </button>
-                    );
-                  })}
+                  <p className="text-[10px] text-[#81736D] mt-1">Kitchen (KOT) estimate</p>
                 </div>
               </div>
 
               {/* Description */}
               <div>
-                <label className="block text-xs font-semibold text-[#1E293B] mb-1.5">
+                <label className="block text-xs font-semibold text-[#4F0809] mb-1.5">
                   Description
                 </label>
                 <textarea
                   rows={2}
                   value={formDesc}
                   onChange={(e) => setFormDesc(e.target.value)}
-                  placeholder="Describe ingredients, cooking style, or flavor profile..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#CBD5E1] bg-white text-xs font-normal text-[#1E293B] focus:border-[#4F0809] focus:outline-none shadow-xs"
+                  placeholder="Describe ingredients, authentic spices, cooking style..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#E8DCD2] bg-[#FBF6EF]/40 text-xs font-normal text-[#302421] focus:bg-white focus:border-[#4F0809] focus:outline-none transition shadow-2xs"
                 />
               </div>
 
               {/* Portion-wise Extras */}
               <div className="pt-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-[#1E293B]">Portion-wise Extras</span>
-                  {/* Toggle */}
+                  <span className="text-xs font-bold text-[#4F0809]">Portion-wise Extras</span>
+                  {/* Royal Burgundy Toggle */}
                   <button
                     type="button"
                     onClick={() => setFormPortionWiseExtras((prev) => !prev)}
                     className={`w-10 h-5 rounded-full transition-colors relative p-0.5 cursor-pointer ${
-                      formPortionWiseExtras ? 'bg-[#2563EB]' : 'bg-[#CBD5E1]'
+                      formPortionWiseExtras ? 'bg-[#4F0809]' : 'bg-[#E8DCD2]'
                     }`}
                   >
                     <div
@@ -1511,7 +1485,7 @@ export default function MenuBuilderPage() {
                     />
                   </button>
                 </div>
-                <p className="text-[11px] text-[#64748B] mt-1">
+                <p className="text-[11px] text-[#81736D] mt-1">
                   Each portion gets its own add-ons with their own prices (e.g. Extra Cheese: R +₹30, M +₹50).
                 </p>
               </div>
@@ -1519,37 +1493,37 @@ export default function MenuBuilderPage() {
               {/* Portions (optional) */}
               <div className="pt-2 space-y-2">
                 <div>
-                  <h4 className="text-xs font-bold text-[#1E293B]">Portions (optional)</h4>
-                  <p className="text-[11px] text-[#64748B] mt-0.5">
+                  <h4 className="text-xs font-bold text-[#4F0809]">Portions (optional)</h4>
+                  <p className="text-[11px] text-[#81736D] mt-0.5">
                     e.g. Half plate ₹100 / Full plate ₹200. Customers must pick one. The first portion's price becomes the item's base price.
                   </p>
                 </div>
 
                 {/* Portions list */}
                 {formPortions.map((p, idx) => (
-                  <div key={p.id} className="flex items-center gap-2 bg-[#F8FAFC] p-2 rounded-xl border border-[#E2E8F0]">
-                    <span className="text-[10px] font-bold text-[#64748B] w-4">{idx + 1}.</span>
+                  <div key={p.id} className="flex items-center gap-2 bg-[#FBF6EF]/40 p-2 rounded-xl border border-[#E8DCD2]">
+                    <span className="text-[10px] font-bold text-[#81736D] w-4">{idx + 1}.</span>
                     <input
                       type="text"
                       placeholder="Portion name (e.g. Half / Full)"
                       value={p.name}
                       onChange={(e) => handlePortionChange(p.id, 'name', e.target.value)}
-                      className="flex-1 px-2.5 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-xs font-medium focus:outline-none focus:border-[#2563EB]"
+                      className="flex-1 px-2.5 py-1.5 rounded-lg border border-[#E8DCD2] bg-white text-xs font-medium text-[#302421] focus:outline-none focus:border-[#4F0809]"
                     />
                     <div className="relative w-28">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-[#64748B]">₹</span>
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-[#81736D]">₹</span>
                       <input
                         type="number"
                         placeholder="Price"
                         value={p.price}
                         onChange={(e) => handlePortionChange(p.id, 'price', e.target.value)}
-                        className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-xs font-bold focus:outline-none focus:border-[#2563EB]"
+                        className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-[#E8DCD2] bg-white text-xs font-bold text-[#302421] focus:outline-none focus:border-[#4F0809]"
                       />
                     </div>
                     <button
                       type="button"
                       onClick={() => handleRemovePortion(p.id)}
-                      className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-500 transition cursor-pointer"
+                      className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-600 transition cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -1559,9 +1533,9 @@ export default function MenuBuilderPage() {
                 <button
                   type="button"
                   onClick={handleAddPortion}
-                  className="w-full py-2 rounded-xl border border-[#CBD5E1] text-[#2563EB] hover:bg-[#EFF6FF] text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  className="w-full py-2.5 rounded-xl border border-[#E8DCD2] text-[#4F0809] bg-white hover:bg-[#FBF6EF] text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-2xs"
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Plus className="w-3.5 h-3.5 text-[#B78A48]" />
                   <span>Add Portion</span>
                 </button>
               </div>
@@ -1569,19 +1543,19 @@ export default function MenuBuilderPage() {
               {/* Extras (optional) */}
               <div className="pt-2 space-y-2">
                 <div>
-                  <h4 className="text-xs font-bold text-[#1E293B]">Extras (optional)</h4>
-                  <p className="text-[11px] text-[#64748B] mt-0.5">
+                  <h4 className="text-xs font-bold text-[#4F0809]">Extras (optional)</h4>
+                  <p className="text-[11px] text-[#81736D] mt-0.5">
                     Priced add-ons customers can pick, e.g. Extra gravy +₹30, Salad +₹20.
                   </p>
                 </div>
 
                 <div className="flex items-center justify-between py-1">
-                  <span className="text-xs font-medium text-[#1E293B]">Single-choice Extras</span>
+                  <span className="text-xs font-medium text-[#302421]">Single-choice Extras</span>
                   <button
                     type="button"
                     onClick={() => setFormSingleChoiceExtras((prev) => !prev)}
                     className={`w-10 h-5 rounded-full transition-colors relative p-0.5 cursor-pointer ${
-                      formSingleChoiceExtras ? 'bg-[#2563EB]' : 'bg-[#CBD5E1]'
+                      formSingleChoiceExtras ? 'bg-[#4F0809]' : 'bg-[#E8DCD2]'
                     }`}
                   >
                     <div
@@ -1594,29 +1568,29 @@ export default function MenuBuilderPage() {
 
                 {/* Extras list */}
                 {formExtras.map((extraItem, idx) => (
-                  <div key={extraItem.id} className="flex items-center gap-2 bg-[#F8FAFC] p-2 rounded-xl border border-[#E2E8F0]">
-                    <span className="text-[10px] font-bold text-[#64748B] w-4">{idx + 1}.</span>
+                  <div key={extraItem.id} className="flex items-center gap-2 bg-[#FBF6EF]/40 p-2 rounded-xl border border-[#E8DCD2]">
+                    <span className="text-[10px] font-bold text-[#81736D] w-4">{idx + 1}.</span>
                     <input
                       type="text"
                       placeholder="Extra name (e.g. Cheese, Gravy)"
                       value={extraItem.name}
                       onChange={(e) => handleExtraChange(extraItem.id, 'name', e.target.value)}
-                      className="flex-1 px-2.5 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-xs font-medium focus:outline-none focus:border-[#2563EB]"
+                      className="flex-1 px-2.5 py-1.5 rounded-lg border border-[#E8DCD2] bg-white text-xs font-medium text-[#302421] focus:outline-none focus:border-[#4F0809]"
                     />
                     <div className="relative w-28">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-[#64748B]">₹</span>
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-[#81736D]">₹</span>
                       <input
                         type="number"
                         placeholder="Price"
                         value={extraItem.price}
                         onChange={(e) => handleExtraChange(extraItem.id, 'price', e.target.value)}
-                        className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-xs font-bold focus:outline-none focus:border-[#2563EB]"
+                        className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-[#E8DCD2] bg-white text-xs font-bold text-[#302421] focus:outline-none focus:border-[#4F0809]"
                       />
                     </div>
                     <button
                       type="button"
                       onClick={() => handleRemoveExtra(extraItem.id)}
-                      className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-500 transition cursor-pointer"
+                      className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-600 transition cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -1626,24 +1600,24 @@ export default function MenuBuilderPage() {
                 <button
                   type="button"
                   onClick={handleAddExtra}
-                  className="w-full py-2 rounded-xl border border-[#CBD5E1] text-[#2563EB] hover:bg-[#EFF6FF] text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  className="w-full py-2.5 rounded-xl border border-[#E8DCD2] text-[#4F0809] bg-white hover:bg-[#FBF6EF] text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-2xs"
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Plus className="w-3.5 h-3.5 text-[#B78A48]" />
                   <span>Add Extra</span>
                 </button>
               </div>
 
               {/* Horizontal line */}
-              <div className="border-t border-[#E2E8F0] my-2" />
+              <div className="border-t border-[#E8DCD2] my-2" />
 
               {/* Stock Settings */}
               <div className="space-y-3">
-                <h4 className="text-xs font-bold text-[#1E293B]">Stock Settings</h4>
+                <h4 className="text-xs font-bold text-[#4F0809]">Stock Settings</h4>
                 
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs font-medium text-[#1E293B]">Track Quantity</p>
-                    <p className="text-[11px] text-[#64748B]">
+                    <p className="text-xs font-medium text-[#302421]">Track Quantity</p>
+                    <p className="text-[11px] text-[#81736D]">
                       {formTrackQuantity ? 'Track Qty on' : 'Track Qty off'}
                     </p>
                   </div>
@@ -1651,7 +1625,7 @@ export default function MenuBuilderPage() {
                     type="button"
                     onClick={() => setFormTrackQuantity((prev) => !prev)}
                     className={`w-10 h-5 rounded-full transition-colors relative p-0.5 cursor-pointer ${
-                      formTrackQuantity ? 'bg-[#2563EB]' : 'bg-[#CBD5E1]'
+                      formTrackQuantity ? 'bg-[#4F0809]' : 'bg-[#E8DCD2]'
                     }`}
                   >
                     <div
@@ -1663,8 +1637,8 @@ export default function MenuBuilderPage() {
                 </div>
 
                 {formTrackQuantity && (
-                  <div className="bg-[#F8FAFC] p-2.5 rounded-xl border border-[#E2E8F0]">
-                    <label className="block text-[11px] font-semibold text-[#1E293B] mb-1">
+                  <div className="bg-[#FBF6EF]/50 p-2.5 rounded-xl border border-[#E8DCD2]">
+                    <label className="block text-[11px] font-semibold text-[#4F0809] mb-1">
                       Available Stock Units
                     </label>
                     <input
@@ -1673,43 +1647,43 @@ export default function MenuBuilderPage() {
                       value={formStockQuantity}
                       onChange={(e) => setFormStockQuantity(e.target.value)}
                       placeholder="e.g. 50"
-                      className="w-full px-3 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-xs font-medium focus:outline-none focus:border-[#2563EB]"
+                      className="w-full px-3 py-1.5 rounded-lg border border-[#E8DCD2] bg-white text-xs font-medium text-[#302421] focus:outline-none focus:border-[#4F0809]"
                     />
                   </div>
                 )}
 
                 {/* In Stock Checkbox */}
-                <label className="flex items-center gap-2 text-xs font-medium text-[#1E293B] cursor-pointer">
+                <label className="flex items-center gap-2 text-xs font-medium text-[#302421] cursor-pointer">
                   <input
                     type="checkbox"
                     checked={formIsAvailable}
                     onChange={(e) => setFormIsAvailable(e.target.checked)}
-                    className="w-4 h-4 rounded text-[#2563EB] accent-[#2563EB]"
+                    className="w-4 h-4 rounded text-[#4F0809] accent-[#4F0809]"
                   />
                   <span>In Stock</span>
                 </label>
               </div>
 
               {/* Horizontal line */}
-              <div className="border-t border-[#E2E8F0] my-2" />
+              <div className="border-t border-[#E8DCD2] my-2" />
 
               {/* Raw Materials */}
               <div className="space-y-2">
                 <div>
-                  <h4 className="text-xs font-bold text-[#1E293B]">Raw Materials</h4>
-                  <p className="text-[11px] text-[#64748B]">(Recipe/Ingredients)</p>
+                  <h4 className="text-xs font-bold text-[#4F0809]">Raw Materials</h4>
+                  <p className="text-[11px] text-[#81736D]">(Recipe/Ingredients)</p>
                 </div>
-                <p className="text-[11px] text-[#64748B]">
+                <p className="text-[11px] text-[#81736D]">
                   Define raw materials needed to prepare this dish
                 </p>
-                <p className="text-[11px] font-medium text-rose-500">
+                <p className="text-[11px] font-medium text-rose-600 bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-lg">
                   No raw materials found. Add materials in Raw Materials screen first.
                 </p>
                 <Link
                   href="/dashboard/inventory"
-                  className="w-full py-2.5 rounded-xl border border-[#CBD5E1] text-[#334155] hover:bg-[#F8FAFC] text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  className="w-full py-2.5 rounded-xl border border-[#E8DCD2] text-[#4F0809] bg-white hover:bg-[#FBF6EF] text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-2xs"
                 >
-                  <ArrowRight className="w-3.5 h-3.5 text-[#334155]" />
+                  <ArrowRight className="w-3.5 h-3.5 text-[#B78A48]" />
                   <span>Go to Raw Materials</span>
                 </Link>
               </div>
@@ -1717,15 +1691,15 @@ export default function MenuBuilderPage() {
               {/* Form Bottom Spacing */}
               <div className="h-2" />
 
-              {/* Modal Footer (Sticky or Bottom) */}
-              <div className="pt-3 border-t border-[#E2E8F0] flex items-center justify-end gap-3 shrink-0">
+              {/* Modal Footer */}
+              <div className="pt-3 border-t border-[#E8DCD2] flex items-center justify-end gap-3 shrink-0">
                 <button
                   type="button"
                   onClick={() => {
                     setIsAddItemModalOpen(false);
                     setIsEditItemModalOpen(false);
                   }}
-                  className="px-5 py-2.5 rounded-xl text-xs font-semibold text-[#64748B] hover:text-[#1E293B] hover:bg-[#F1F5F9] transition cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl text-xs font-semibold text-[#81736D] hover:text-[#4F0809] hover:bg-[#FBF6EF] transition cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1736,11 +1710,11 @@ export default function MenuBuilderPage() {
                 >
                   {formSubmitting ? (
                     <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#B78A48]" />
                       <span>Saving...</span>
                     </>
                   ) : (
-                    <span>Save</span>
+                    <span>Save Item</span>
                   )}
                 </button>
               </div>
