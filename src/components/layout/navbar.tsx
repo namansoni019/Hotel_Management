@@ -20,8 +20,8 @@ import {
   PhoneCall,
   Home as HomeIcon,
 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
-import type { User } from '@supabase/supabase-js';
+import { subscribeToAuth, signOutUser, getUserProfile, checkAdminInDb } from '@/lib/firebase/auth';
+import type { FirebaseUser } from '@/lib/firebase/auth';
 
 function PalaceMark() {
   return (
@@ -74,7 +74,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isMenuClosing, setIsMenuClosing] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [language, setLanguage] = useState<'Eng' | 'हिन्दी'>('Eng');
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
   const [isStaff, setIsStaff] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -140,26 +140,15 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   // Subscribe to auth state
   useEffect(() => {
-    const supabase = createClient();
-
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user ?? null);
-      if (!data.user) {
-        setIsStaff(false);
-      }
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session?.user) {
+    const unsubscribe = subscribeToAuth((currentUser) => {
+      setUser(currentUser);
+      if (!currentUser) {
         setIsStaff(false);
       }
     });
 
     return () => {
-      subscription.unsubscribe();
+      unsubscribe();
     };
   }, []);
 
@@ -171,8 +160,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
     let isMounted = true;
     const verifyStaffRole = async () => {
-      const metaRole = (user.user_metadata?.role || '').toLowerCase();
-      const metaIsStaff = Boolean(user.user_metadata?.is_staff);
       const staffRoles = [
         'admin',
         'administrator',
@@ -185,22 +172,43 @@ export const Navbar: React.FC<NavbarProps> = ({
         'staff',
       ];
 
-      if (metaIsStaff || staffRoles.includes(metaRole)) {
+      // 1. Check Admins doc in Firestore
+      try {
+        const adminCheck = await checkAdminInDb({ uid: user.uid, email: user.email });
+        if (adminCheck.isAdmin) {
+          if (isMounted) setIsStaff(true);
+          return;
+        }
+      } catch {
+        // Fallback
+      }
+
+      // 2. Check owner email
+      if (user.email === 'soninamanp7@gmail.com') {
         if (isMounted) setIsStaff(true);
+        return;
+      }
+
+      // 3. Check Firestore user profile
+      try {
+        const profile = await getUserProfile(user.uid);
+        const role = (profile?.role || '').toLowerCase();
+        if (profile?.is_staff || staffRoles.includes(role)) {
+          if (isMounted) setIsStaff(true);
+          return;
+        }
+      } catch {
+        // Fallback
       }
 
       try {
         const res = await fetch(`/api/staff/check?email=${encodeURIComponent(user.email!)}`);
         if (res.ok && isMounted) {
           const data = await res.json();
-          if (data.isStaff) {
-            setIsStaff(true);
-          } else if (!metaIsStaff && !staffRoles.includes(metaRole)) {
-            setIsStaff(false);
-          }
+          setIsStaff(Boolean(data.isStaff));
         }
       } catch {
-        // Fallback to metadata
+        // Fallback
       }
     };
 
@@ -241,8 +249,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   }
 
   const handleSignOut = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    await signOutUser();
     setUser(null);
     setProfileOpen(false);
     setMobileMenuOpen(false);
@@ -251,7 +258,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   const displayName =
-    user?.user_metadata?.full_name ||
+    user?.displayName ||
     user?.email?.split('@')[0] ||
     'Royal Guest';
   const initial = displayName.charAt(0).toUpperCase();
@@ -277,7 +284,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         className={`fixed top-0 left-0 right-0 z-50 w-full transition-all duration-300 ease-in-out flex items-center ${
           isScrolled
             ? 'h-[66px] sm:h-[70px] bg-[#4F0809]/00'
-            : 'h-[62px] sm:h-[100px] bg-[#EFEBE3]/00'
+            : 'h-[62px] sm:h-[100px] bg-[#FFF7E8]/00'
         } px-3.5 sm:px-6 lg:px-8 xl:px-10 ${className}`}
       >
 <div className="w-full max-w-xxl mx-auto flex items-center justify-between px-4 py-2.5 rounded-full">
@@ -727,14 +734,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>,
           document.body
         )}
-
-      {/* Structural spacer so non-hero pages are never covered by the fixed floating header */}
-      <div
-        className={`w-full shrink-0 pointer-events-none transition-all duration-300 ${
-          isScrolled ? 'h-[66px] sm:h-[70px]' : 'h-[72px] sm:h-[78px]'
-        }`}
-        aria-hidden="true"
-      />
     </>
   );
 };

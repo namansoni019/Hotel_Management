@@ -4,8 +4,6 @@ import {
   INITIAL_ROOM_TYPES,
   INITIAL_ROOMS,
   INITIAL_HALL,
-  INITIAL_RESTAURANT_CATEGORIES,
-  INITIAL_CAFE_CATEGORIES,
   INITIAL_TABLES,
   INITIAL_QR_TOKENS,
   INITIAL_ORDERS,
@@ -48,7 +46,7 @@ let roomTypesState = [...INITIAL_ROOM_TYPES];
 let roomsState = [...INITIAL_ROOMS];
 let hallState = { ...INITIAL_HALL };
 let eventLeadsState: EventLead[] = [];
-let menuCategoriesState = [...INITIAL_RESTAURANT_CATEGORIES, ...INITIAL_CAFE_CATEGORIES];
+let menuCategoriesState: MenuCategory[] = [];
 let tablesState = [...INITIAL_TABLES];
 let qrTokensState = [...INITIAL_QR_TOKENS];
 let ordersState = [...INITIAL_ORDERS];

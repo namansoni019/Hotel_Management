@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { sendPasswordReset } from '@/lib/firebase/auth';
 import { X, Mail, CheckCircle2, AlertCircle, Loader2, ArrowRight } from 'lucide-react';
 
 interface ForgotPasswordModalProps {
@@ -34,22 +34,16 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
 
     setLoading(true);
     try {
-      const supabase = createClient();
-      const redirectUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}/auth/reset-password`
-        : 'http://localhost:3000/auth/reset-password';
-
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: redirectUrl,
-      });
-
-      if (resetError) {
-        setError(resetError.message || 'Unable to send reset instructions. Please try again.');
+      await sendPasswordReset(email.trim());
+      setSuccess(true);
+    } catch (err: unknown) {
+      const errorObj = err as { code?: string; message?: string };
+      const code = errorObj?.code || '';
+      if (code.includes('user-not-found')) {
+        setError('No account found with this email address. Please verify or create an account.');
       } else {
-        setSuccess(true);
+        setError(errorObj?.message || 'Unable to send reset instructions. Please try again.');
       }
-    } catch {
-      setError('A network error occurred. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }

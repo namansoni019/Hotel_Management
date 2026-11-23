@@ -26,6 +26,8 @@ import {
   Pencil,
   AlertOctagon,
 } from 'lucide-react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { dataRepository } from '@/lib/data/repository';
 import type { Table, TableReservation, Outlet } from '@/lib/types';
 
@@ -87,20 +89,12 @@ export default function TablesReservationsPage() {
     setTimeout(() => setNotification(null), 4000);
   };
 
-  const loadData = async () => {
-    try {
-      const res = await fetch('/api/tables');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.tables) setTables(data.tables);
-        if (data.reservations) setReservations(data.reservations);
-      } else {
-        setTables(dataRepository.getTables());
-        setReservations(dataRepository.getTableReservations());
-      }
-    } catch {
-      setTables(dataRepository.getTables());
-      setReservations(dataRepository.getTableReservations());
+  useEffect(() => {
+    // Clear legacy localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('dashboard_tables');
+      } catch {}
     }
 
     const outs = dataRepository.getOutlets();
@@ -111,11 +105,40 @@ export default function TablesReservationsPage() {
       setFormOutletId(outs[0].id);
       setNewTableOutletId(outs[0].id);
     }
-  };
 
-  useEffect(() => {
-    loadData();
+    const unsubTables = onSnapshot(
+      collection(db, 'tables'),
+      (snap) => {
+        if (!snap.empty) {
+          setTables(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Table[]);
+        } else {
+          setTables(dataRepository.getTables());
+        }
+      },
+      () => setTables(dataRepository.getTables())
+    );
+
+    const unsubRes = onSnapshot(
+      collection(db, 'table_reservations'),
+      (snap) => {
+        if (!snap.empty) {
+          setReservations(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as TableReservation[]);
+        } else {
+          setReservations(dataRepository.getTableReservations());
+        }
+      },
+      () => setReservations(dataRepository.getTableReservations())
+    );
+
+    return () => {
+      unsubTables();
+      unsubRes();
+    };
   }, []);
+
+  const loadData = async () => {
+    // Kept for manual refresh
+  };
 
   // Update table number options when outlet selection changes in Reservation modal
   useEffect(() => {

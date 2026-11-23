@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { signUpWithEmail, signInWithGoogle } from '@/lib/firebase/auth';
 import { AuthLogo } from '@/components/auth/auth-logo';
 import { AuthCornerArt } from '@/components/auth/auth-corner-art';
 import { TermsModal } from '@/components/auth/terms-modal';
@@ -102,44 +102,12 @@ export default function SignUpPage() {
 
     setLoading(true);
     try {
-      const supabase = createClient();
-
-      // Call our server endpoint which creates the user with auto-confirmation (no Gmail verification link sent)
-      const res = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email.trim(),
-          password,
-          fullName: fullName.trim(),
-          phone: mobileNumber.trim(),
-        }),
-      });
-
-      const result = await res.json();
-
-      if (!res.ok) {
-        setServerError(result.error || 'Registration failed. Please check your details and try again.');
-        return;
-      }
-
-      // Automatically sign in the confirmed user immediately
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+      await signUpWithEmail(
+        email.trim(),
         password,
-      });
-
-      if (signInError) {
-        // Fallback if session requires manual sign in
-        setSuccessInfo({
-          emailSent: false,
-          message: 'Account created successfully! Please proceed to Sign In.',
-        });
-        setTimeout(() => {
-          router.push('/login');
-        }, 1200);
-        return;
-      }
+        fullName.trim(),
+        mobileNumber.trim()
+      );
 
       setSuccessInfo({
         emailSent: false,
@@ -150,8 +118,16 @@ export default function SignUpPage() {
       setTimeout(() => {
         router.push('/');
       }, 1000);
-    } catch {
-      setServerError('A network connectivity issue occurred. Please try again.');
+    } catch (err: unknown) {
+      const errorObj = err as { code?: string; message?: string };
+      const code = errorObj?.code || '';
+      if (code.includes('email-already-in-use')) {
+        setServerError('An account with this email address already exists. Please Sign In.');
+      } else if (code.includes('weak-password')) {
+        setServerError('Password is too weak. Please use at least 8 characters with letters and numbers.');
+      } else {
+        setServerError(errorObj?.message || 'Registration failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -163,25 +139,21 @@ export default function SignUpPage() {
     setGoogleLoading(true);
 
     try {
-      const supabase = createClient();
-      const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${origin}/auth/callback?next=/book`,
-        },
-      });
-
-      if (error) {
-        if (error.message.toLowerCase().includes('not enabled') || error.message.toLowerCase().includes('unsupported')) {
-          setGoogleError('Google Sign-In is not enabled on this Supabase project. Please register with your email address.');
-        } else {
-          setGoogleError(error.message || 'Unable to initialize Google Sign-In.');
-        }
+      await signInWithGoogle();
+      router.refresh();
+      setTimeout(() => {
+        router.push('/');
+      }, 500);
+    } catch (err: unknown) {
+      const errorObj = err as { code?: string; message?: string };
+      const code = errorObj?.code || '';
+      if (code.includes('popup-closed-by-user')) {
+        // User closed popup without signing in
+      } else if (code.includes('unauthorized-domain')) {
+        setGoogleError('Google Sign-In is initializing. Ensure localhost is authorized in Firebase Authentication Settings.');
+      } else {
+        setGoogleError(errorObj?.message || 'Unable to register with Google. Please try again.');
       }
-    } catch {
-      setGoogleError('Google Sign-In failed to connect. Please register using the form.');
     } finally {
       setGoogleLoading(false);
     }

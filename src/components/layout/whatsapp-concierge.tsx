@@ -48,7 +48,7 @@ export const WhatsAppConcierge: React.FC = () => {
       window.removeEventListener('resize', handleScroll);
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
-  }, []);
+  }, [pathname]);
 
   // Hide on staff dashboard and dedicated auth screens
   if (

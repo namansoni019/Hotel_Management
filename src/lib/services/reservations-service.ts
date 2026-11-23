@@ -1,33 +1,54 @@
-import { getSupabaseClient } from './supabase-helper';
+import {
+  collection,
+  doc,
+  getDocs,
+  getDoc,
+  setDoc,
+  updateDoc,
+  query,
+  where,
+  orderBy,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { dataRepository } from '@/lib/data/repository';
 import type { Reservation, ReservationStatus, GuestAadhaarDetail } from '@/lib/types';
 
 export const reservationsService = {
   async getReservations(): Promise<Reservation[]> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('reservations')
-        .select('*, guests(*), room_types(*), rooms(*)')
-        .order('created_at', { ascending: false });
-      if (!error && data) return data as Reservation[];
+    try {
+      const colRef = collection(db, 'reservations');
+      const q = query(colRef, orderBy('created_at', 'desc'));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        return snapshot.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as Reservation[];
+      }
+    } catch (err) {
+      console.warn('Firestore getReservations fallback:', err);
     }
     return dataRepository.getReservations();
   },
 
   async getReservationByReference(reference: string): Promise<Reservation | undefined> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reference);
-      const query = supabase
-        .from('reservations')
-        .select('*, guests(*), room_types(*), rooms(*)');
-      
-      const { data, error } = isUuid 
-        ? await query.eq('id', reference).maybeSingle()
-        : await query.eq('reference_code', reference.toUpperCase()).maybeSingle();
+    try {
+      const docRef = doc(db, 'reservations', reference);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        return { id: snap.id, ...snap.data() } as Reservation;
+      }
 
-      if (!error && data) return data as Reservation;
+      const colRef = collection(db, 'reservations');
+      const q = query(colRef, where('reference_code', '==', reference.toUpperCase()));
+      const qSnap = await getDocs(q);
+      if (!qSnap.empty) {
+        const d = qSnap.docs[0];
+        return { id: d.id, ...d.data() } as Reservation;
+      }
+    } catch (err) {
+      console.warn('Firestore getReservationByReference fallback:', err);
     }
     return (
       dataRepository.getReservationByReference(reference) ||
@@ -37,6 +58,7 @@ export const reservationsService = {
 
   async createReservation(data: {
     roomTypeId: string;
+    roomId?: string;
     checkIn: string;
     checkOut: string;
     partySize: number;
@@ -46,85 +68,33 @@ export const reservationsService = {
     notes?: string;
     aadhaarDetails?: GuestAadhaarDetail[];
   }): Promise<Reservation> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      // 1. Get or create guest
-      let guestId: string | null = null;
-      const { data: existingGuest } = await supabase
-        .from('guests')
-        .select('id')
-        .eq('phone', data.guestPhone)
-        .maybeSingle();
+    const createdLocal = dataRepository.createReservation(data);
 
-      if (existingGuest) {
-        guestId = existingGuest.id;
-      } else {
-        const { data: newGuest } = await supabase
-          .from('guests')
-          .insert({
-            name: data.guestName,
-            phone: data.guestPhone,
-            email: data.guestEmail || null,
-          })
-          .select('id')
-          .single();
-        if (newGuest) guestId = newGuest.id;
-      }
-
-      // 2. Fetch room type rate
-      const { data: rt } = await supabase
-        .from('room_types')
-        .select('*')
-        .eq('id', data.roomTypeId)
-        .single();
-
-      if (rt) {
-        const startDate = new Date(data.checkIn);
-        const endDate = new Date(data.checkOut);
-        const nights = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
-        const totalMinor = rt.base_rate_minor * nights;
-        const depositMinor = Math.round(totalMinor * 0.2);
-        const ref = `RES-AUR-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-
-        const { data: res, error } = await supabase
-          .from('reservations')
-          .insert({
-            property_id: rt.property_id,
-            guest_id: guestId,
-            room_type_id: data.roomTypeId,
-            check_in: data.checkIn,
-            check_out: data.checkOut,
-            party_size: data.partySize,
-            status: 'confirmed',
-            total_amount_minor: totalMinor,
-            deposit_amount_minor: depositMinor,
-            balance_due_minor: totalMinor - depositMinor,
-            reference_code: ref,
-            notes: data.notes || null,
-          })
-          .select('*, guests(*), room_types(*)')
-          .single();
-
-        if (!error && res) return res as Reservation;
-      }
+    try {
+      const docRef = doc(db, 'reservations', createdLocal.id);
+      await setDoc(docRef, {
+        ...createdLocal,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      });
+    } catch (err) {
+      console.warn('Firestore createReservation error (saved locally):', err);
     }
 
-    return dataRepository.createReservation(data);
+    return createdLocal;
   },
 
   async updateReservationStatus(id: string, status: ReservationStatus, roomId?: string): Promise<Reservation | null> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-      const updatePayload: any = { status, updated_at: new Date().toISOString() };
-      if (roomId) updatePayload.room_id = roomId;
-      const query = supabase
-        .from('reservations')
-        .update(updatePayload);
-      const { data, error } = isUuid
-        ? await query.eq('id', id).select('*, guests(*), room_types(*), rooms(*)').maybeSingle()
-        : await query.eq('reference_code', id.toUpperCase()).select('*, guests(*), room_types(*), rooms(*)').maybeSingle();
-      if (!error && data) return data as Reservation;
+    try {
+      const docRef = doc(db, 'reservations', id);
+      const updateData: Record<string, unknown> = {
+        status,
+        updated_at: serverTimestamp(),
+      };
+      if (roomId) updateData.room_id = roomId;
+      await updateDoc(docRef, updateData);
+    } catch (err) {
+      console.warn('Firestore updateReservationStatus fallback:', err);
     }
     return dataRepository.updateReservationStatus(id, status, roomId);
   },

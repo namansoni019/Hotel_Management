@@ -80,7 +80,7 @@ export function HeroSection() {
     // Height provides the scroll runway (100dvh + 380px) over which the sticky hero shrinks in-place
     <section
       ref={trackRef}
-      className="relative z-20 w-full h-[calc(100vh+380px)] sm:h-[calc(100dvh+400px)] -mt-[72px] sm:-mt-[84px]"
+      className="relative z-20 w-full h-[calc(100vh+380px)] sm:h-[calc(100dvh+400px)] mt-0"
     >
       {/* ── Sticky Full-Screen Viewport Container (Locks to top: 0 while scrolling) ── */}
       <div className="sticky top-0 left-0 right-[0] w-full h-screen sm:h-[100dvh] min-h-[520px] sm:min-h-[640px] flex flex-col justify-between overflow-visible">

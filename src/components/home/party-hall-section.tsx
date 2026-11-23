@@ -118,36 +118,47 @@ export function PartyHallSection() {
   };
 
   return (
-    <section id="party-hall-enquiry" className="relative py-20 sm:py-24 text-[#fff8eb] overflow-hidden" style={{ backgroundColor: '#210405' }}>
-      {/* Background Palace Pattern Overlay */}
-      <div className="absolute inset-0 z-0 opacity-10 bg-[radial-gradient(#d8aa67_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none" />
+<section
+      id="party-hall-enquiry"
+      className="relative py-16 sm:py-24 bg-[#3B0507] text-[#FDF8EE] overflow-hidden selection:bg-[#D8AA67] selection:text-[#3B0507]"
+    >
+      {/* Subtle Background Palace Dot Pattern */}
+      <div className="absolute inset-0 z-0 opacity-[0.07] bg-[radial-gradient(#D8AA67_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none" />
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Top Banner Row: Headline & Hall Specifications Card */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center mb-16">
+        {/* ── 1. TOP BANNER ROW: HEADLINE & HALL SPECIFICATIONS CARD ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center mb-14 sm:mb-20">
           {/* Left: Titles & Event Types */}
-          <div className="lg:col-span-7 text-left">
-            <span
-              className="text-xs sm:text-sm font-semibold tracking-[0.25em] uppercase text-[#d8aa67] block mb-2"
-              style={{ letterSpacing: '0.22em' }}
-            >
-              Grand Party Hall
+          <div className="lg:col-span-7 flex flex-col items-center lg:items-start text-center lg:text-left">
+            <span className="text-[10px] sm:text-xs font-bold tracking-[0.22em] uppercase text-[#D8AA67] inline-flex items-center gap-2.5 mb-2">
+              <span className="w-6 h-[1px] bg-[#C99A52] lg:hidden" />
+              <span>Grand Party Hall</span>
+              <span className="w-6 sm:w-8 h-[1px] bg-[#C99A52]" />
             </span>
+
             <h2
-              className="text-3xl sm:text-5xl lg:text-6xl font-bold mb-4 leading-[1.02] text-[#fff8eb]"
+              className="text-3xl sm:text-5xl lg:text-6xl font-bold mb-3.5 leading-[1.02] text-[#FDF8EE]"
               style={{
                 fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
               }}
             >
-              A Majestic Space for <br />
+              A Majestic Space for <br className="hidden sm:inline" />
               Every Occasion
             </h2>
-            <p className="text-sm sm:text-base text-[#eee1cc]/90 max-w-xl font-light leading-relaxed mb-8">
+
+            {/* Diamond-Tipped Gold Rule */}
+            <div className="flex items-center justify-center lg:justify-start gap-2 w-40 sm:w-52 mb-5">
+              <span className="h-[1px] flex-1 bg-[#C99A52]/60" />
+              <span className="w-1.5 h-1.5 rotate-45 bg-[#D8AA67]/70" />
+              <span className="h-[1px] flex-1 bg-[#C99A52]/60 lg:hidden" />
+            </div>
+
+            <p className="text-xs sm:text-base text-[#FDF8EE]/85 max-w-xl font-light leading-relaxed mb-7 sm:mb-8">
               Host your special moments in our elegant banquet hall with royal architecture, modern facilities, customizable décor, and personalized hospitality crafted for 25 to 50 guests.
             </p>
 
-            {/* Event Tags (6 highlights requested by user) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {/* Event Tags Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 w-full">
               {[
                 { label: 'Birthday Parties', icon: Cake },
                 { label: 'Anniversary Parties', icon: Heart },
@@ -160,90 +171,85 @@ export function PartyHallSection() {
                 return (
                   <div
                     key={idx}
-                    className="flex items-center space-x-2.5 p-3 rounded-xl bg-white/5 border border-[#d8aa67]/30 hover:border-[#d8aa67] hover:bg-white/10 transition-all text-xs sm:text-sm text-[#eee1cc]"
+                    className="flex items-center space-x-2.5 px-3 py-2.5 sm:p-3 rounded-xl bg-[#4F0809]/85 hover:bg-[#4F0809] transition-colors text-left text-[11px] sm:text-xs text-[#FDF8EE]"
                   >
-                    <Icon className="w-4 h-4 text-[#d8aa67] shrink-0" />
-                    <span className="font-medium">{item.label}</span>
+                    <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#D8AA67] shrink-0" />
+                    <span className="font-medium leading-snug">{item.label}</span>
                   </div>
                 );
               })}
             </div>
           </div>
 
-          {/* Right: Hall Specifications Card (Matching dark brown framed card in mockup) */}
+          {/* Right: Jharokha-Framed Hall Specifications Card */}
           <div className="lg:col-span-5">
-            <div
-              className="rounded-2xl p-6 sm:p-7 border transition-all shadow-2xl relative overflow-hidden"
-              style={{
-                backgroundColor: '#35080a',
-                borderColor: 'rgba(216, 170, 103, 0.45)',
-                boxShadow: '0 20px 45px rgba(0, 0, 0, 0.5)',
-              }}
-            >
-              <div className="flex items-center space-x-3 pb-4 mb-4 border-b border-[#d8aa67]/30">
-                <div className="w-10 h-10 rounded-full bg-[#d8aa67]/20 flex items-center justify-center text-[#d8aa67]">
-                  <Sparkles className="w-5 h-5" />
+            <div className="rounded-t-3xl rounded-b-2xl p-6 sm:p-7 bg-[#4F0809] text-left">
+              <div className="flex items-center space-x-3 pb-4 mb-5">
+                <div className="w-10 h-10 rounded-full bg-[#3B0507] flex items-center justify-center text-[#D8AA67] shrink-0">
+                  <Sparkles className="w-4 h-4" />
                 </div>
                 <div>
                   <h3
-                    className="text-2xl font-bold text-[#d8aa67]"
+                    className="text-2xl font-bold text-[#FDF8EE] leading-none"
                     style={{
                       fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
                     }}
                   >
                     Grand Party Hall
                   </h3>
-                  <span className="text-xs text-[#eee1cc]/70">Exclusive Boutique Banquet</span>
+                  <span className="text-[11px] uppercase tracking-[0.16em] text-[#D8AA67] font-semibold block mt-1">
+                    Exclusive Boutique Banquet
+                  </span>
                 </div>
               </div>
 
-              <div className="space-y-4 text-xs sm:text-sm text-left">
+              <div className="space-y-4 text-xs sm:text-sm">
                 <div className="flex items-start space-x-3">
-                  <Users className="w-4 h-4 text-[#d8aa67] mt-0.5 shrink-0" />
+                  <Users className="w-4 h-4 text-[#D8AA67] mt-0.5 shrink-0" />
                   <div>
-                    <span className="font-semibold text-[#fff8eb] block">Capacity:</span>
-                    <span className="text-[#d8aa67] font-bold">25 – 50 Guests</span>
-                    <span className="text-[#eee1cc]/70 block text-[11px]">
+                    <span className="font-semibold text-[#FDF8EE] block">Capacity</span>
+                    <span className="text-[#D8AA67] font-bold">25 – 50 Guests</span>
+                    <span className="text-[#FDF8EE]/70 block text-[11px]">
                       Ideal for intimate celebrations, date nights &amp; private gatherings
                     </span>
                   </div>
                 </div>
 
                 <div className="flex items-start space-x-3">
-                  <PartyPopper className="w-4 h-4 text-[#d8aa67] mt-0.5 shrink-0" />
+                  <PartyPopper className="w-4 h-4 text-[#D8AA67] mt-0.5 shrink-0" />
                   <div>
-                    <span className="font-semibold text-[#fff8eb] block">Ideal For:</span>
-                    <span className="text-[#eee1cc]/90 text-[11px] leading-relaxed block">
+                    <span className="font-semibold text-[#FDF8EE] block">Ideal For</span>
+                    <span className="text-[#FDF8EE]/80 text-[11px] leading-relaxed block">
                       Birthdays, Anniversaries, Romantic Dates, Corporate Meets &amp; Social Functions
                     </span>
                   </div>
                 </div>
 
                 <div className="flex items-start space-x-3">
-                  <Palette className="w-4 h-4 text-[#d8aa67] mt-0.5 shrink-0" />
+                  <Palette className="w-4 h-4 text-[#D8AA67] mt-0.5 shrink-0" />
                   <div>
-                    <span className="font-semibold text-[#fff8eb] block">Customizable Décor:</span>
-                    <span className="text-[#eee1cc]/90 text-[11px] leading-relaxed block">
+                    <span className="font-semibold text-[#FDF8EE] block">Customizable Décor</span>
+                    <span className="text-[#FDF8EE]/80 text-[11px] leading-relaxed block">
                       Floral backdrops, fairy lights, balloon styling, romantic candlelight &amp; stage setup
                     </span>
                   </div>
                 </div>
 
                 <div className="flex items-start space-x-3">
-                  <UtensilsCrossed className="w-4 h-4 text-[#d8aa67] mt-0.5 shrink-0" />
+                  <UtensilsCrossed className="w-4 h-4 text-[#D8AA67] mt-0.5 shrink-0" />
                   <div>
-                    <span className="font-semibold text-[#fff8eb] block">Catering:</span>
-                    <span className="text-[#eee1cc]/90 text-[11px] block">
+                    <span className="font-semibold text-[#FDF8EE] block">Catering</span>
+                    <span className="text-[#FDF8EE]/80 text-[11px] block">
                       Multi-Cuisine &amp; Authentic Royal Rajasthani Banqueting
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-6 pt-4 border-t border-[#d8aa67]/30 flex items-center justify-between">
-                <span className="text-[11px] text-[#eee1cc]/70">Private bookings open</span>
-                <span className="inline-flex items-center text-xs font-semibold text-[#d8aa67]">
-                  <ShieldCheck className="w-3.5 h-3.5 mr-1 text-emerald-400" />
+              <div className="mt-6 pt-4 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[11px] text-[#FDF8EE]/70">Private bookings open</span>
+                <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#3B0507] text-[11px] font-semibold text-[#D8AA67]">
+                  <ShieldCheck className="w-3.5 h-3.5 mr-1 text-emerald-400 shrink-0" />
                   Direct Booking Guarantee
                 </span>
               </div>
@@ -251,187 +257,12 @@ export function PartyHallSection() {
           </div>
         </div>
 
-        {/* ── MAIN AREA: CHECK AVAILABILITY FORM + PHOTO CAROUSEL ── */}
-        <div className="bg-[#fffaf1] rounded-3xl p-6 sm:p-8 lg:p-10 shadow-2xl text-[#151c1a] border border-[#dfcdb1] mb-20">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* Left: Form */}
-            <div className="lg:col-span-6 text-left">
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#d8aa67] block mb-1">
-                Reserve Your Date
-              </span>
-              <h3
-                className="text-2xl sm:text-3xl font-bold text-[#781c1c] mb-2"
-                style={{
-                  fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
-                }}
-              >
-                Check Availability &amp; Enquire
-              </h3>
-              <p className="text-xs sm:text-sm text-[#4f0809]/80 mb-6">
-                Send us your celebration requirements and our event manager will confirm availability for your 25–50 guests event.
-              </p>
-
-              {submittedLead ? (
-                <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-950 space-y-3">
-                  <div className="flex items-center space-x-2 text-emerald-700 font-bold text-base">
-                    <CheckCircle2 className="w-5 h-5" />
-                    <span>Enquiry Received Successfully!</span>
-                  </div>
-                  <p className="text-xs leading-relaxed text-emerald-800">
-                    Thank you! Your reference code is{' '}
-                    <strong className="font-mono text-emerald-900 bg-emerald-100 px-2 py-0.5 rounded">
-                      {submittedLead.referenceCode}
-                    </strong>
-                    . Our dedicated event coordinator will call you shortly to discuss your custom décor, date, and guest arrangements.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setSubmittedLead(null)}
-                    className="text-xs font-semibold text-emerald-800 underline hover:text-emerald-950 pt-2"
-                  >
-                    Submit Another Enquiry
-                  </button>
-                </div>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  {errorMsg && (
-                    <div className="p-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg">
-                      {errorMsg}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Event Type */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-[#857866] mb-1">
-                        Event Type
-                      </label>
-                      <select
-                        value={eventType}
-                        onChange={(e) => setEventType(e.target.value)}
-                        className="w-full h-11 px-3 rounded-xl border border-[#dfcdb1] bg-white text-xs sm:text-sm font-semibold text-[#151c1a] focus:border-[#d8aa67] focus:outline-none"
-                      >
-                        <option value="Birthday Party">Birthday Party</option>
-                        <option value="Anniversary Party">Anniversary Party</option>
-                        <option value="Romantic Date & Private Dining">Book for a Date (Private)</option>
-                        <option value="Corporate Event / Meeting">Corporate Event</option>
-                        <option value="Social Function / Gathering">Social Function</option>
-                      </select>
-                    </div>
-
-                    {/* Event Date */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-[#857866] mb-1">
-                        Event Date
-                      </label>
-                      <input
-                        type="date"
-                        value={eventDate}
-                        onChange={(e) => setEventDate(e.target.value)}
-                        className="w-full h-11 px-3 rounded-xl border border-[#dfcdb1] bg-white text-xs sm:text-sm font-semibold text-[#151c1a] focus:border-[#d8aa67] focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Expected Guests */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-[#857866] mb-1">
-                        Expected Guests (25-50 People)
-                      </label>
-                      <select
-                        value={expectedGuests}
-                        onChange={(e) => setExpectedGuests(e.target.value)}
-                        className="w-full h-11 px-3 rounded-xl border border-[#dfcdb1] bg-white text-xs sm:text-sm font-semibold text-[#151c1a] focus:border-[#d8aa67] focus:outline-none"
-                      >
-                        <option value="Romantic Date (2 Guests)">Romantic Date (2 Guests)</option>
-                        <option value="25 - 35 Guests">25 - 35 Guests</option>
-                        <option value="35 - 50 Guests">35 - 50 Guests (Hall Capacity)</option>
-                        <option value="25 - 50 Guests">Custom 25 - 50 Guests</option>
-                      </select>
-                    </div>
-
-                    {/* Your Name */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-[#857866] mb-1">
-                        Your Name
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Vikramaditya Singh"
-                        value={contactName}
-                        onChange={(e) => setContactName(e.target.value)}
-                        className="w-full h-11 px-3 rounded-xl border border-[#dfcdb1] bg-white text-xs sm:text-sm text-[#151c1a] focus:border-[#d8aa67] focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Phone Number */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-[#857866] mb-1">
-                        Phone Number
-                      </label>
-                      <input
-                        type="tel"
-                        placeholder="+91 98765 43210"
-                        value={contactPhone}
-                        onChange={(e) => setContactPhone(e.target.value)}
-                        className="w-full h-11 px-3 rounded-xl border border-[#dfcdb1] bg-white text-xs sm:text-sm text-[#151c1a] focus:border-[#d8aa67] focus:outline-none"
-                      />
-                    </div>
-
-                    {/* Email Address */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-[#857866] mb-1">
-                        Email Address
-                      </label>
-                      <input
-                        type="email"
-                        placeholder="name@example.com"
-                        value={contactEmail}
-                        onChange={(e) => setContactEmail(e.target.value)}
-                        className="w-full h-11 px-3 rounded-xl border border-[#dfcdb1] bg-white text-xs sm:text-sm text-[#151c1a] focus:border-[#d8aa67] focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Message (Optional) */}
-                  <div>
-                    <label className="block text-[11px] font-semibold text-[#857866] mb-1">
-                      Customizable Décor &amp; Event Requirements (Optional)
-                    </label>
-                    <textarea
-                      rows={3}
-                      placeholder="Tell us about your celebration theme, cake, floral styling, romantic table setup..."
-                      value={message}
-                      onChange={(e) => setMessage(e.target.value)}
-                      className="w-full p-3 rounded-xl border border-[#dfcdb1] bg-white text-xs sm:text-sm text-[#151c1a] focus:border-[#d8aa67] focus:outline-none resize-none"
-                    />
-                  </div>
-
-                  {/* Submit Button */}
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full sm:w-auto px-8 h-12 rounded-xl text-xs sm:text-sm font-semibold tracking-wide transition-all shadow-md hover:shadow-xl cursor-pointer flex items-center justify-center space-x-2 text-[#fff8eb]"
-                    style={{
-                      backgroundColor: '#4f0809',
-                      border: '1px solid #d8aa67',
-                      fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
-                      fontSize: '17px',
-                    }}
-                  >
-                    <span>{isSubmitting ? 'Sending Enquiry...' : 'Check Availability & Send Enquiry'}</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                </form>
-              )}
-            </div>
-
-            {/* Right: Interactive Hall Photo Carousel */}
-            <div className="lg:col-span-6 flex flex-col justify-between">
-              <div className="relative h-72 sm:h-96 w-full rounded-2xl overflow-hidden border border-[#dfcdb1] shadow-lg group">
+{/* ── 2. MAIN AREA: CHECK AVAILABILITY FORM + PHOTO CAROUSEL ── */}
+        <div className="bg-[#FDF8EE] rounded-t-3xl rounded-b-2xl p-4 sm:p-8 lg:p-10 text-[#4F0809] mb-16 sm:mb-20">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start">
+            {/* Top on Mobile / Right on Desktop: Interactive Hall Photo Carousel */}
+            <div className="order-1 lg:order-2 lg:col-span-6 flex flex-col justify-between">
+              <div className="relative h-60 sm:h-96 w-full rounded-t-3xl rounded-b-xl overflow-hidden bg-[#EFE6D5] group">
                 <Image
                   src={HALL_IMAGES[currentSlide].src}
                   alt={HALL_IMAGES[currentSlide].title}
@@ -440,54 +271,57 @@ export function PartyHallSection() {
                 />
 
                 {/* Gradient shade */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#2B0507]/85 via-transparent to-transparent" />
 
                 {/* Carousel Controls */}
                 <button
                   type="button"
                   onClick={prevSlide}
                   aria-label="Previous slide"
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 hover:bg-[#d8aa67] text-white flex items-center justify-center backdrop-blur-sm transition-all cursor-pointer"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#4F0809]/80 hover:bg-[#4F0809] text-[#FFF8EB] flex items-center justify-center backdrop-blur-sm transition-colors cursor-pointer"
                 >
-                  <ChevronLeft className="w-5 h-5" />
+                  <ChevronLeft className="w-4 h-4 text-[#D8AA67]" />
                 </button>
                 <button
                   type="button"
                   onClick={nextSlide}
                   aria-label="Next slide"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 hover:bg-[#d8aa67] text-white flex items-center justify-center backdrop-blur-sm transition-all cursor-pointer"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#4F0809]/80 hover:bg-[#4F0809] text-[#FFF8EB] flex items-center justify-center backdrop-blur-sm transition-colors cursor-pointer"
                 >
-                  <ChevronRight className="w-5 h-5" />
+                  <ChevronRight className="w-4 h-4 text-[#D8AA67]" />
                 </button>
 
                 {/* Slide Caption */}
-                <div className="absolute bottom-4 left-4 right-4 text-left text-white">
-                  <span className="text-[10px] font-bold text-[#d8aa67] uppercase tracking-wider block">
-                    Capacity 25-50 People
+                <div className="absolute bottom-3.5 left-4 right-4 text-left text-white">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#4F0809]/95 text-[9px] font-bold text-[#F7E5C3] uppercase tracking-[0.16em] mb-1">
+                    <span className="w-1 h-1 rounded-full bg-[#D8AA67]" />
+                    Capacity 25–50 People
                   </span>
                   <h4
-                    className="text-lg sm:text-xl font-bold text-white mb-1"
+                    className="text-base sm:text-xl font-bold text-[#FFF8EB] mb-0.5 leading-snug"
                     style={{
                       fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
                     }}
                   >
                     {HALL_IMAGES[currentSlide].title}
                   </h4>
-                  <p className="text-xs text-white/80 line-clamp-1">
+                  <p className="text-[11px] sm:text-xs text-[#FFF8EB]/80 line-clamp-1">
                     {HALL_IMAGES[currentSlide].caption}
                   </p>
                 </div>
               </div>
 
               {/* Thumbnails */}
-              <div className="grid grid-cols-4 gap-2.5 mt-3">
+              <div className="grid grid-cols-4 gap-2 sm:gap-2.5 mt-2.5 sm:mt-3">
                 {HALL_IMAGES.map((img, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => setCurrentSlide(idx)}
-                    className={`relative h-18 sm:h-20 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
-                      currentSlide === idx ? 'border-[#d8aa67] shadow-md scale-[1.03]' : 'border-transparent opacity-70 hover:opacity-100'
+                    className={`relative h-14 sm:h-20 rounded-xl overflow-hidden transition-all cursor-pointer ${
+                      currentSlide === idx
+                        ? 'opacity-100 scale-[1.02]'
+                        : 'opacity-55 hover:opacity-90'
                     }`}
                   >
                     <Image src={img.src} alt={img.title} fill className="object-cover" />
@@ -495,16 +329,207 @@ export function PartyHallSection() {
                 ))}
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* ── FACILITIES & AMENITIES FOR EVENTS (Matching 6 cards in mockup) ── */}
-        <div className="text-center mb-16">
-          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#d8aa67] block mb-2">
+            {/* Bottom on Mobile / Left on Desktop: Form */}
+            <div className="order-2 lg:order-1 lg:col-span-6 text-left">
+              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-[#9C7A45] block mb-1">
+                Reserve Your Date
+              </span>
+              <h3
+                className="text-2xl sm:text-3xl font-bold text-[#4F0809] mb-2"
+                style={{
+                  fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
+                }}
+              >
+                Check Availability &amp; Enquire
+              </h3>
+
+              {/* Ornamental Gold Divider */}
+              <div className="flex items-center gap-1.5 w-32 mb-3">
+                <span className="h-[1px] w-8 bg-[#C99A52]" />
+                <span className="w-1.5 h-1.5 rotate-45 bg-[#D8AA67]/70" />
+                <span className="h-[1px] flex-1 bg-[#C99A52]/30" />
+              </div>
+
+              <p className="text-xs sm:text-sm text-[#6B533B] mb-5 sm:mb-6 leading-relaxed">
+                Send us your celebration requirements and our event manager will confirm availability for your 25–50 guests event.
+              </p>
+
+              {submittedLead ? (
+                <div className="p-6 rounded-2xl bg-emerald-50 text-emerald-950 space-y-3">
+                  <div className="flex items-center space-x-2 text-emerald-800 font-bold text-base">
+                    <CheckCircle2 className="w-5 h-5 shrink-0" />
+                    <span>Enquiry Received Successfully!</span>
+                  </div>
+                  <p className="text-xs leading-relaxed text-emerald-900">
+                    Thank you! Your reference code is{' '}
+                    <strong className="font-mono text-emerald-950 bg-emerald-100 px-2 py-0.5 rounded">
+                      {submittedLead.referenceCode}
+                    </strong>
+                    . Our dedicated event coordinator will call you shortly to discuss your custom décor, date, and guest arrangements.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setSubmittedLead(null)}
+                    className="text-xs font-bold uppercase tracking-wider text-emerald-800 underline hover:text-emerald-950 pt-1 cursor-pointer"
+                  >
+                    Submit Another Enquiry
+                  </button>
+                </div>
+              ) : (
+<form onSubmit={handleSubmit} className="space-y-4">
+                  {errorMsg && (
+                    <div className="p-3 text-xs text-red-800 bg-red-50 rounded-xl">
+                      {errorMsg}
+                    </div>
+                  )}
+
+                  {/* Row 1: Event Type & Event Date (Always Side-by-Side on Mobile & Desktop) */}
+                  <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5">
+                    {/* Event Type */}
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-[0.14em] font-bold text-[#856B4D] mb-1.5">
+                        Event Type
+                      </label>
+                      <select
+                        value={eventType}
+                        onChange={(e) => setEventType(e.target.value)}
+                        className="w-full h-11 px-2.5 sm:px-3.5 rounded-xl bg-[#F5ECDC] text-xs sm:text-sm font-semibold text-[#4F0809] focus:bg-[#EFE2CC] focus:outline-none transition-colors"
+                      >
+                        <option value="Birthday Party">Birthday Party</option>
+                        <option value="Anniversary Party">Anniversary Party</option>
+                        <option value="Romantic Date & Private Dining">Book for a Date</option>
+                        <option value="Corporate Event / Meeting">Corporate Event</option>
+                        <option value="Social Function / Gathering">Social Function</option>
+                      </select>
+                    </div>
+
+                    {/* Event Date */}
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-[0.14em] font-bold text-[#856B4D] mb-1.5">
+                        Event Date
+                      </label>
+                      <input
+                        type="date"
+                        value={eventDate}
+                        onChange={(e) => setEventDate(e.target.value)}
+                        className="w-full h-11 px-2.5 sm:px-3.5 rounded-xl bg-[#F5ECDC] text-xs sm:text-sm font-semibold text-[#4F0809] focus:bg-[#EFE2CC] focus:outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Row 2: Expected Guests Chips & Your Name in a Single Row */}
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3.5 items-end">
+                    {/* Expected Guests Chip Selector */}
+                    <div className="sm:col-span-7">
+                      <label className="block text-[10px] uppercase tracking-[0.14em] font-bold text-[#856B4D] mb-1.5">
+                        Expected Guests (25–50)
+                      </label>
+                      <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5">
+                        {[
+                          { value: 'Romantic Date (2 Guests)', label: '2 Guests' },
+                          { value: '25 - 35 Guests', label: '25–35' },
+                          { value: '35 - 50 Guests', label: '35–50' },
+                        ].map((chip) => {
+                          const isSelected = expectedGuests === chip.value;
+                          return (
+                            <button
+                              key={chip.value}
+                              type="button"
+                              onClick={() => setExpectedGuests(chip.value)}
+                              className={`flex-1 h-11 px-2.5 rounded-full text-[11px] font-bold tracking-wide whitespace-nowrap transition-colors cursor-pointer ${
+                                isSelected
+                                  ? 'bg-[#4F0809] text-[#FFF8EB]'
+                                  : 'bg-[#F5ECDC] text-[#4F0809] hover:bg-[#EFE2CC]'
+                              }`}
+                            >
+                              {chip.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Your Name */}
+                    <div className="sm:col-span-5">
+                      <label className="block text-[10px] uppercase tracking-[0.14em] font-bold text-[#856B4D] mb-1.5">
+                        Your Name
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Vikramaditya Singh"
+                        value={contactName}
+                        onChange={(e) => setContactName(e.target.value)}
+                        className="w-full h-11 px-3.5 rounded-xl bg-[#F5ECDC] text-xs sm:text-sm text-[#4F0809] placeholder:text-[#856B4D]/55 focus:bg-[#EFE2CC] focus:outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Row 3: Phone Number & Email Address */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-[0.14em] font-bold text-[#856B4D] mb-1.5">
+                        Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        placeholder="+91 98765 43210"
+                        value={contactPhone}
+                        onChange={(e) => setContactPhone(e.target.value)}
+                        className="w-full h-11 px-3.5 rounded-xl bg-[#F5ECDC] text-xs sm:text-sm text-[#4F0809] placeholder:text-[#856B4D]/55 focus:bg-[#EFE2CC] focus:outline-none transition-colors"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-[0.14em] font-bold text-[#856B4D] mb-1.5">
+                        Email Address
+                      </label>
+                      <input
+                        type="email"
+                        placeholder="name@example.com"
+                        value={contactEmail}
+                        onChange={(e) => setContactEmail(e.target.value)}
+                        className="w-full h-11 px-3.5 rounded-xl bg-[#F5ECDC] text-xs sm:text-sm text-[#4F0809] placeholder:text-[#856B4D]/55 focus:bg-[#EFE2CC] focus:outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Message (Optional) */}
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-[0.14em] font-bold text-[#856B4D] mb-1.5">
+                      Customizable Décor &amp; Event Requirements (Optional)
+                    </label>
+                    <textarea
+                      rows={3}
+                      placeholder="Tell us about your celebration theme, cake, floral styling, romantic table setup..."
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      className="w-full p-3.5 rounded-xl bg-[#F5ECDC] text-xs sm:text-sm text-[#4F0809] placeholder:text-[#856B4D]/55 focus:bg-[#EFE2CC] focus:outline-none resize-none transition-colors"
+                    />
+                  </div>
+
+                  {/* Submit Pill CTA */}
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full sm:w-auto px-8 py-3.5 rounded-full bg-[#4F0809] hover:bg-[#680b0c] text-[#FFF8EB] text-xs font-bold uppercase tracking-[0.14em] transition-colors cursor-pointer inline-flex items-center justify-center space-x-2 group"
+                  >
+                    <span>{isSubmitting ? 'Sending Enquiry...' : 'Check Availability & Enquire'}</span>
+                    <ArrowRight className="w-4 h-4 text-[#D8AA67] group-hover:translate-x-1 transition-transform" />
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>  
+
+        {/* ── 3. FACILITIES & AMENITIES FOR EVENTS ── */}
+        <div className="text-center mb-16 sm:mb-20">
+          <span className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.22em] text-[#D8AA67] block mb-1.5">
             Facilities &amp; Amenities
           </span>
           <h3
-            className="text-3xl sm:text-4xl font-bold text-[#fff8eb] mb-10"
+            className="text-3xl sm:text-4xl font-bold text-[#FDF8EE] mb-3"
             style={{
               fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
             }}
@@ -512,7 +537,13 @@ export function PartyHallSection() {
             Everything for a Perfect Event
           </h3>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="flex items-center justify-center gap-2 w-40 mx-auto mb-8 sm:mb-10">
+            <span className="h-[1px] flex-1 bg-[#C99A52]/60" />
+            <span className="w-1.5 h-1.5 rotate-45 bg-[#D8AA67]/70" />
+            <span className="h-[1px] flex-1 bg-[#C99A52]/60" />
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
             {[
               {
                 title: 'Customizable Décor',
@@ -549,15 +580,15 @@ export function PartyHallSection() {
               return (
                 <div
                   key={idx}
-                  className="flex flex-col items-center justify-center p-5 rounded-2xl bg-white/5 border border-[#d8aa67]/30 hover:border-[#d8aa67] hover:bg-white/10 transition-all text-center group"
+                  className="flex flex-col items-center justify-center p-4 sm:p-5 rounded-t-3xl rounded-b-xl bg-[#4F0809] hover:bg-[#5D0B0D] transition-colors text-center group"
                 >
-                  <div className="w-12 h-12 rounded-full bg-[#d8aa67]/15 flex items-center justify-center text-[#d8aa67] mb-3 group-hover:scale-110 transition-transform">
-                    <Icon className="w-6 h-6 stroke-[1.6]" />
+                  <div className="w-11 h-11 rounded-full bg-[#3B0507] flex items-center justify-center text-[#D8AA67] mb-3 group-hover:scale-105 transition-transform">
+                    <Icon className="w-5 h-5 stroke-[1.7]" />
                   </div>
-                  <h4 className="text-xs sm:text-sm font-semibold text-[#fff8eb] mb-1">
+                  <h4 className="text-xs sm:text-sm font-semibold text-[#FDF8EE] mb-1 leading-snug">
                     {item.title}
                   </h4>
-                  <p className="text-[11px] text-[#eee1cc]/70 leading-tight">
+                  <p className="text-[11px] text-[#FDF8EE]/70 leading-tight">
                     {item.desc}
                   </p>
                 </div>
@@ -566,15 +597,15 @@ export function PartyHallSection() {
           </div>
         </div>
 
-        {/* ── GALLERY - MOMENTS THAT MAKE MEMORIES ── */}
-        <div className="text-left mb-16">
-          <div className="flex items-end justify-between mb-8 pb-4 border-b border-[#d8aa67]/30">
+        {/* ── 4. GALLERY - MOMENTS THAT MAKE MEMORIES ── */}
+        <div className="text-left mb-16 sm:mb-20">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8 pb-2">
             <div>
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[#d8aa67] block mb-1">
+              <span className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.22em] text-[#D8AA67] block mb-1">
                 Gallery
               </span>
               <h3
-                className="text-3xl sm:text-4xl font-bold text-[#fff8eb]"
+                className="text-3xl sm:text-4xl font-bold text-[#FDF8EE]"
                 style={{
                   fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
                 }}
@@ -586,21 +617,23 @@ export function PartyHallSection() {
               <button
                 type="button"
                 onClick={prevSlide}
-                className="w-9 h-9 rounded-full border border-[#d8aa67]/50 flex items-center justify-center text-[#d8aa67] hover:bg-[#d8aa67] hover:text-[#4f0809] transition-all cursor-pointer"
+                aria-label="Previous gallery image"
+                className="w-9 h-9 rounded-full bg-[#4F0809] flex items-center justify-center text-[#D8AA67] hover:bg-[#D8AA67] hover:text-[#4F0809] transition-colors cursor-pointer"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <button
                 type="button"
                 onClick={nextSlide}
-                className="w-9 h-9 rounded-full border border-[#d8aa67]/50 flex items-center justify-center text-[#d8aa67] hover:bg-[#d8aa67] hover:text-[#4f0809] transition-all cursor-pointer"
+                aria-label="Next gallery image"
+                className="w-9 h-9 rounded-full bg-[#4F0809] flex items-center justify-center text-[#D8AA67] hover:bg-[#D8AA67] hover:text-[#4F0809] transition-colors cursor-pointer"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {[
               {
                 src: '/images/events/wedding-mandap.jpg',
@@ -621,7 +654,7 @@ export function PartyHallSection() {
             ].map((gal, idx) => (
               <div
                 key={idx}
-                className="relative h-64 rounded-2xl overflow-hidden border border-[#d8aa67]/30 shadow-md group"
+                className="relative h-48 sm:h-64 rounded-t-3xl rounded-b-xl overflow-hidden group"
               >
                 <Image
                   src={gal.src}
@@ -629,8 +662,8 @@ export function PartyHallSection() {
                   fill
                   className="object-cover group-hover:scale-105 transition-transform duration-700"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-90 group-hover:opacity-100 transition-opacity" />
-                <span className="absolute bottom-3 left-3 right-3 text-xs font-semibold text-[#fff8eb]">
+                <div className="absolute inset-0 bg-gradient-to-t from-[#2B0507]/85 via-transparent to-transparent" />
+                <span className="absolute bottom-3 left-3.5 right-3.5 text-xs font-semibold text-[#FDF8EE] leading-snug">
                   {gal.title}
                 </span>
               </div>
@@ -638,54 +671,46 @@ export function PartyHallSection() {
           </div>
         </div>
 
-        {/* ── BOTTOM CTA BANNER (Matching bottom card in mockup) ── */}
-        <div
-          className="rounded-3xl p-8 sm:p-12 text-center text-[#151c1a] border relative overflow-hidden"
-          style={{
-            backgroundColor: '#fffaf1',
-            borderColor: 'rgba(216, 170, 103, 0.6)',
-            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4)',
-          }}
-        >
-          <span className="text-xs font-semibold uppercase tracking-[0.25em] text-[#d8aa67] block mb-2">
+        {/* ── 5. BOTTOM CTA BANNER ── */}
+        <div className="rounded-t-3xl mb-6 sm:mb-0 rounded-b-2xl p-7 sm:p-12 text-center text-[#4F0809] bg-[#FDF8EE]">
+          <span className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.24em] text-[#9C7A45] block mb-2">
             Experience Rajmahal
           </span>
           <h3
-            className="text-3xl sm:text-5xl font-bold text-[#781c1c] mb-3"
+            className="text-3xl sm:text-5xl font-bold text-[#4F0809] mb-3 leading-tight"
             style={{
               fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
             }}
           >
             Plan Your Stay or Celebration Today
           </h3>
-          <p className="text-sm sm:text-base text-[#4f0809]/80 max-w-xl mx-auto mb-8 font-normal">
-            Whether it's a luxurious stay in our Deluxe Rooms or an intimate celebration in our 25–50 guests party hall, we are here to make it unforgettable.
+
+          <div className="flex items-center justify-center gap-2 w-40 sm:w-48 mx-auto mb-4">
+            <span className="h-[1px] flex-1 bg-[#C99A52]/60" />
+            <span className="w-1.5 h-1.5 rotate-45 bg-[#D8AA67]/70" />
+            <span className="h-[1px] flex-1 bg-[#C99A52]/60" />
+          </div>
+
+          <p className="text-xs sm:text-base text-[#6B533B] max-w-xl mx-auto mb-7 sm:mb-8 font-normal leading-relaxed">
+            Whether it&apos;s a luxurious stay in our Deluxe Rooms or an intimate celebration in our 25–50 guests party hall, we are here to make it unforgettable.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
             <a
               href="/rooms"
-              className="w-full sm:w-auto px-8 py-3.5 rounded-xl font-semibold text-sm tracking-wide text-[#fff8eb] bg-[#4f0809] hover:bg-[#781c1c] transition-all shadow-lg flex items-center justify-center space-x-2"
-              style={{
-                fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
-                fontSize: '17px',
-              }}
+              className="w-full sm:w-auto px-7 py-3.5 rounded-full font-bold text-xs uppercase tracking-[0.14em] text-[#FFF8EB] bg-[#4F0809] hover:bg-[#680b0c] transition-colors inline-flex items-center justify-center space-x-2 group"
             >
-              <BedDouble className="w-4 h-4 text-[#d8aa67]" />
+              <BedDouble className="w-4 h-4 text-[#D8AA67]" />
               <span>Book a Deluxe Room</span>
-              <ArrowRight className="w-4 h-4" />
+              <ArrowRight className="w-3.5 h-3.5 text-[#D8AA67] group-hover:translate-x-1 transition-transform" />
             </a>
 
             <a
               href="#party-hall-enquiry"
-              className="w-full sm:w-auto px-8 py-3.5 rounded-xl font-semibold text-sm tracking-wide text-[#781c1c] border-2 border-[#781c1c] hover:bg-[#781c1c] hover:text-[#fff8eb] transition-all shadow flex items-center justify-center space-x-2"
-              style={{
-                fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
-                fontSize: '17px',
-              }}
+              className="w-full sm:w-auto px-7 py-3.5 rounded-full font-bold text-xs uppercase tracking-[0.14em] text-[#4F0809] bg-[#D8AA67]/25 hover:bg-[#D8AA67]/45 transition-colors inline-flex items-center justify-center space-x-2"
             >
-              <Sparkles className="w-4 h-4 text-[#d8aa67]" />
-              <span>Enquire for Party Hall (25-50 Pax)</span>
+              <Sparkles className="w-4 h-4 text-[#9C7A45]" />
+              <span>Enquire for Party Hall (25–50 Pax)</span>
             </a>
           </div>
         </div>

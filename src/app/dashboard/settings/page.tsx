@@ -50,14 +50,41 @@ export default function DashboardSettingsPage() {
   const [lowStockAlert, setLowStockAlert] = useState(true);
 
   useEffect(() => {
-    setOutlets(dataRepository.getOutlets());
-    const prop = dataRepository.getProperty();
-    if (prop) {
-      setPropertyName(prop.name);
-      setPropertyAddress(prop.address || propertyAddress);
-      setPropertyPhone(prop.phone || propertyPhone);
-      setPropertyEmail(prop.email || propertyEmail);
+    // Clear legacy localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('dashboard_settings');
+      } catch {}
     }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.property) {
+            setPropertyName(data.property.name || propertyName);
+            setPropertyAddress(data.property.address || propertyAddress);
+            setPropertyPhone(data.property.phone || propertyPhone);
+            setPropertyEmail(data.property.email || propertyEmail);
+          }
+          if (data.outlets) {
+            setOutlets(data.outlets);
+          }
+        }
+      } catch {
+        setOutlets(dataRepository.getOutlets());
+        const prop = dataRepository.getProperty();
+        if (prop) {
+          setPropertyName(prop.name);
+          setPropertyAddress(prop.address || propertyAddress);
+          setPropertyPhone(prop.phone || propertyPhone);
+          setPropertyEmail(prop.email || propertyEmail);
+        }
+      }
+    }
+
+    loadSettings();
   }, []);
 
   const triggerSaveNotification = (msg: string) => {
@@ -65,14 +92,22 @@ export default function DashboardSettingsPage() {
     setTimeout(() => setSaveSuccessMsg(''), 3000);
   };
 
-  const handleSaveProperty = (e: React.FormEvent) => {
+  const handleSaveProperty = async (e: React.FormEvent) => {
     e.preventDefault();
-    dataRepository.updateProperty({
+    const updatedProp = {
       name: propertyName,
       address: propertyAddress,
       phone: propertyPhone,
       email: propertyEmail,
-    });
+    };
+    try {
+      await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ property: updatedProp }),
+      });
+    } catch {}
+    dataRepository.updateProperty(updatedProp);
     triggerSaveNotification('Property profile updated successfully.');
   };
 

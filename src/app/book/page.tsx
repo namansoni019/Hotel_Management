@@ -89,7 +89,7 @@ function BookRoomForm() {
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Fetch live room types from Supabase via /api/rooms
+  // Fetch live room types from Firestore via /api/rooms
   useEffect(() => {
     async function loadLiveRooms() {
       try {
@@ -286,7 +286,7 @@ function BookRoomForm() {
   };
 
   return (
-    <div className="relative bg-[#F5F1E8] min-h-screen py-10 sm:py-16 text-[#241F1A] overflow-hidden">
+    <div className="relative bg-[#F5F1E8] min-h-screen pt-24 sm:pt-28 pb-16 text-[#241F1A] overflow-hidden">
       {/* Decorative Mandala Corner Line Art with subtle watermark opacity */}
       <MandalaOrnament position="top-left" opacity={0.16} color="#B08D57" className="hidden lg:block" />
       <MandalaOrnament position="bottom-right" opacity={0.16} color="#B08D57" className="hidden lg:block" />

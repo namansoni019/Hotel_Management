@@ -9,8 +9,6 @@ import { Badge } from '@/components/ui/badge';
 import { formatMoney } from '@/lib/utils/money';
 import {
   INITIAL_OUTLETS,
-  INITIAL_RESTAURANT_CATEGORIES,
-  INITIAL_CAFE_CATEGORIES,
 } from '@/lib/data/initial-data';
 import type { MenuItem, MenuCategory } from '@/lib/types';
 import { ShoppingBag, Plus, Minus, Clock, MapPin, ArrowRight } from 'lucide-react';
@@ -26,19 +24,18 @@ export default function PickupOrderPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [liveCategories, setLiveCategories] = useState<MenuCategory[] | null>(null);
 
-  // Load live menu items from Supabase
+  // Load live menu items from Firestore via /api/menu
   React.useEffect(() => {
     async function fetchMenu() {
       try {
         const res = await fetch('/api/menu');
         if (res.ok) {
           const data = await res.json();
-          if (data.categories && data.categories.length > 0) {
-            setLiveCategories(data.categories);
-          }
+          setLiveCategories(data.categories || []);
         }
       } catch (err) {
         console.error('Failed to load live menu:', err);
+        setLiveCategories([]);
       }
     }
     fetchMenu();
@@ -46,12 +43,14 @@ export default function PickupOrderPage() {
 
   const currentOutlet =
     INITIAL_OUTLETS.find((o) => o.id === selectedOutletId) || INITIAL_OUTLETS[0];
-  const categories =
-    liveCategories && liveCategories.length > 0
-      ? liveCategories
-      : currentOutlet.type === 'restaurant'
-      ? INITIAL_RESTAURANT_CATEGORIES
-      : INITIAL_CAFE_CATEGORIES;
+  const categories = React.useMemo(() => {
+    if (!liveCategories || liveCategories.length === 0) return [];
+    const filtered = liveCategories.filter((cat) => {
+      const isCafe = cat.outlet_id?.includes('2') || cat.id.includes('cafe');
+      return currentOutlet.type === 'cafe' ? isCafe : !isCafe;
+    });
+    return filtered.length > 0 ? filtered : liveCategories;
+  }, [liveCategories, currentOutlet.type]);
 
   const addToCart = (item: MenuItem) => {
     setCart((prev) => ({
@@ -183,65 +182,72 @@ export default function PickupOrderPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left: Menu Items */}
           <div className="lg:col-span-7 space-y-8">
-            {categories.map((cat) => (
-              <div key={cat.id} className="space-y-4">
-                <h2 className="font-heritage text-xl font-bold text-[#241F1A] border-b-2 border-[#D4CBBB] pb-2">
-                  {cat.name}
-                </h2>
-
-                <div className="grid grid-cols-1 gap-3">
-                  {cat.items?.map((item: MenuItem) => {
-                    const qty = cart[item.id]?.quantity || 0;
-                    return (
-                      <div
-                        key={item.id}
-                        className="heritage-card bg-white p-4 rounded-xl border border-[#D4CBBB] flex items-center justify-between shadow-xs hover:border-[#670E10] transition-colors"
-                      >
-                        <div className="max-w-md pr-4">
-                          <div className="flex items-center space-x-2 mb-1">
-                            <span className="w-3.5 h-3.5 rounded-sm border border-emerald-600 flex items-center justify-center p-0.5 shrink-0">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-                            </span>
-                            <h3 className="font-bold text-[#241F1A] text-sm">{item.name}</h3>
-                          </div>
-                          <p className="text-xs text-[#6B6155] line-clamp-1">{item.description}</p>
-                          <span className="text-xs font-heritage font-bold text-[#670E10] mt-1 block">
-                            {formatMoney(item.price_minor)}
-                          </span>
-                        </div>
-
-                        {qty === 0 ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => addToCart(item)}
-                            className="text-xs px-3 shrink-0"
-                          >
-                            <Plus className="w-3.5 h-3.5 mr-1" /> Add
-                          </Button>
-                        ) : (
-                          <div className="flex items-center space-x-2 bg-[#FAF8F3] px-2 py-1 rounded-xl border border-[#D4CBBB] shrink-0">
-                            <button
-                              onClick={() => removeFromCart(item.id)}
-                              className="p-1 text-[#670E10] hover:text-[#8A1518] cursor-pointer"
-                            >
-                              <Minus className="w-3.5 h-3.5" />
-                            </button>
-                            <span className="text-xs font-bold text-[#241F1A] px-1">{qty}</span>
-                            <button
-                              onClick={() => addToCart(item)}
-                              className="p-1 text-[#670E10] hover:text-[#8A1518] cursor-pointer"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+            {categories.length === 0 ? (
+              <div className="bg-[#FAF8F3] border border-[#D4CBBB] rounded-2xl p-10 text-center">
+                <p className="font-heritage text-lg font-bold text-[#241F1A]">Palace Menu In Preparation</p>
+                <p className="text-xs text-[#6B6155] mt-1">Our chefs are updating today's fresh culinary creations. Please check back shortly.</p>
               </div>
-            ))}
+            ) : (
+              categories.map((cat) => (
+                <div key={cat.id} className="space-y-4">
+                  <h2 className="font-heritage text-xl font-bold text-[#241F1A] border-b-2 border-[#D4CBBB] pb-2">
+                    {cat.name}
+                  </h2>
+
+                  <div className="grid grid-cols-1 gap-3">
+                    {cat.items?.map((item: MenuItem) => {
+                      const qty = cart[item.id]?.quantity || 0;
+                      return (
+                        <div
+                          key={item.id}
+                          className="heritage-card bg-white p-4 rounded-xl border border-[#D4CBBB] flex items-center justify-between shadow-xs hover:border-[#670E10] transition-colors"
+                        >
+                          <div className="max-w-md pr-4">
+                            <div className="flex items-center space-x-2 mb-1">
+                              <span className="w-3.5 h-3.5 rounded-sm border border-emerald-600 flex items-center justify-center p-0.5 shrink-0">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                              </span>
+                              <h3 className="font-bold text-[#241F1A] text-sm">{item.name}</h3>
+                            </div>
+                            <p className="text-xs text-[#6B6155] line-clamp-1">{item.description}</p>
+                            <span className="text-xs font-heritage font-bold text-[#670E10] mt-1 block">
+                              {formatMoney(item.price_minor)}
+                            </span>
+                          </div>
+
+                          {qty === 0 ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => addToCart(item)}
+                              className="text-xs px-3 shrink-0"
+                            >
+                              <Plus className="w-3.5 h-3.5 mr-1" /> Add
+                            </Button>
+                          ) : (
+                            <div className="flex items-center space-x-2 bg-[#FAF8F3] px-2 py-1 rounded-xl border border-[#D4CBBB] shrink-0">
+                              <button
+                                onClick={() => removeFromCart(item.id)}
+                                className="p-1 text-[#670E10] hover:text-[#8A1518] cursor-pointer"
+                              >
+                                <Minus className="w-3.5 h-3.5" />
+                              </button>
+                              <span className="text-xs font-bold text-[#241F1A] px-1">{qty}</span>
+                              <button
+                                onClick={() => addToCart(item)}
+                                className="p-1 text-[#670E10] hover:text-[#8A1518] cursor-pointer"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
           {/* Right: Cart & Pickup Details */}

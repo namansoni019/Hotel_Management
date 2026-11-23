@@ -11,6 +11,8 @@ import { Testimonials } from '@/components/home/testimonials';
 import { Promotions } from '@/components/home/promotions';
 import { RestaurantReservationCTA } from '@/components/restaurant/restaurant-reservation-cta';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata = {
   title: 'Rajmahal Heritage Hotel | A Royal Stay Rooted in Rajasthan',
   description:

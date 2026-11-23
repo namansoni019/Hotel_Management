@@ -9,8 +9,6 @@ import { Badge } from '@/components/ui/badge';
 import { formatMoney } from '@/lib/utils/money';
 import {
   INITIAL_OUTLETS,
-  INITIAL_RESTAURANT_CATEGORIES,
-  INITIAL_CAFE_CATEGORIES,
 } from '@/lib/data/initial-data';
 import type { MenuItem, MenuCategory } from '@/lib/types';
 import { ShoppingBag, Plus, Minus, Clock, MapPin, Truck, ArrowRight } from 'lucide-react';
@@ -27,19 +25,18 @@ export default function DeliveryOrderPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [liveCategories, setLiveCategories] = useState<MenuCategory[] | null>(null);
 
-  // Load live menu items from Supabase
+  // Load live menu items from Firestore via /api/menu
   React.useEffect(() => {
     async function fetchMenu() {
       try {
         const res = await fetch('/api/menu');
         if (res.ok) {
           const data = await res.json();
-          if (data.categories && data.categories.length > 0) {
-            setLiveCategories(data.categories);
-          }
+          setLiveCategories(data.categories || []);
         }
       } catch (err) {
         console.error('Failed to load live menu:', err);
+        setLiveCategories([]);
       }
     }
     fetchMenu();
@@ -47,12 +44,14 @@ export default function DeliveryOrderPage() {
 
   const currentOutlet =
     INITIAL_OUTLETS.find((o) => o.id === selectedOutletId) || INITIAL_OUTLETS[0];
-  const categories =
-    liveCategories && liveCategories.length > 0
-      ? liveCategories
-      : currentOutlet.type === 'restaurant'
-      ? INITIAL_RESTAURANT_CATEGORIES
-      : INITIAL_CAFE_CATEGORIES;
+  const categories = React.useMemo(() => {
+    if (!liveCategories || liveCategories.length === 0) return [];
+    const filtered = liveCategories.filter((cat) => {
+      const isCafe = cat.outlet_id?.includes('2') || cat.id.includes('cafe');
+      return currentOutlet.type === 'cafe' ? isCafe : !isCafe;
+    });
+    return filtered.length > 0 ? filtered : liveCategories;
+  }, [liveCategories, currentOutlet.type]);
 
   const addToCart = (item: MenuItem) => {
     setCart((prev) => ({
@@ -192,7 +191,13 @@ export default function DeliveryOrderPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left: Menu Items */}
           <div className="lg:col-span-7 space-y-8">
-            {categories.map((cat) => (
+            {categories.length === 0 ? (
+              <div className="bg-[#FAF8F3] border border-[#D4CBBB] rounded-2xl p-10 text-center">
+                <p className="font-heritage text-lg font-bold text-[#241F1A]">Palace Menu In Preparation</p>
+                <p className="text-xs text-[#6B6155] mt-1">Our chefs are updating today's fresh culinary creations. Please check back shortly.</p>
+              </div>
+            ) : (
+              categories.map((cat) => (
               <div key={cat.id} className="space-y-4">
                 <h2 className="font-heritage text-xl font-bold text-[#241F1A] border-b-2 border-[#D4CBBB] pb-2">
                   {cat.name}
@@ -250,7 +255,7 @@ export default function DeliveryOrderPage() {
                   })}
                 </div>
               </div>
-            ))}
+            )))}
           </div>
 
           {/* Right: Cart & Delivery Address */}

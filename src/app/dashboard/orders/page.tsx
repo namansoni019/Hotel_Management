@@ -24,6 +24,9 @@ import {
   MapPin,
   Check,
 } from 'lucide-react';
+import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { ordersService } from '@/lib/services/orders-service';
 import { dataRepository } from '@/lib/data/repository';
 import type { Order, Outlet } from '@/lib/types';
 
@@ -40,13 +43,49 @@ function OrdersContent() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
-  const loadData = () => {
-    setOrders(dataRepository.getOrders());
-    setOutlets(dataRepository.getOutlets());
-  };
-
   useEffect(() => {
-    loadData();
+    // Clear any legacy localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('dashboard_orders');
+      } catch {}
+    }
+
+    // Real-time Firestore orders listener
+    const unsubOrders = onSnapshot(
+      collection(db, 'orders'),
+      (snap) => {
+        if (!snap.empty) {
+          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Order[];
+          list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+          setOrders(list);
+        } else {
+          setOrders(dataRepository.getOrders());
+        }
+      },
+      (err) => {
+        console.warn('Real-time orders listener:', err);
+        setOrders(dataRepository.getOrders());
+      }
+    );
+
+    // Outlets listener
+    const unsubOutlets = onSnapshot(
+      collection(db, 'outlets'),
+      (snap) => {
+        if (!snap.empty) {
+          setOutlets(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Outlet[]);
+        } else {
+          setOutlets(dataRepository.getOutlets());
+        }
+      },
+      () => setOutlets(dataRepository.getOutlets())
+    );
+
+    return () => {
+      unsubOrders();
+      unsubOutlets();
+    };
   }, []);
 
   useEffect(() => {
@@ -57,12 +96,19 @@ function OrdersContent() {
     if (urlSearch) setSearchQuery(urlSearch);
   }, [urlSearch]);
 
-  const handleUpdateStatus = (id: string, status: Order['status'], reason?: string) => {
-    dataRepository.updateOrderStatus(id, status, reason);
-    loadData();
+  const handleUpdateStatus = async (id: string, status: Order['status'], reason?: string) => {
+    try {
+      await ordersService.updateOrderStatus(id, status, reason);
+    } catch {
+      dataRepository.updateOrderStatus(id, status, reason);
+    }
     if (selectedOrder && selectedOrder.id === id) {
       setSelectedOrder({ ...selectedOrder, status, cancel_reason: reason || null });
     }
+  };
+
+  const loadData = () => {
+    // Real-time listener handles sync
   };
 
   // Filtered orders

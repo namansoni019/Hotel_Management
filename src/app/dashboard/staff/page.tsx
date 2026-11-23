@@ -20,6 +20,8 @@ import {
   X,
   AlertTriangle,
 } from 'lucide-react';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import type { StaffMember } from '@/lib/types';
 
 const ROLES_LIST = [
@@ -72,7 +74,44 @@ export default function StaffRolesPage() {
   };
 
   useEffect(() => {
-    loadData();
+    // Clear legacy localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('dashboard_staff');
+      } catch {}
+    }
+
+    setLoading(true);
+    const unsub = onSnapshot(
+      collection(db, 'users'),
+      (snap) => {
+        if (!snap.empty) {
+          const list = snap.docs.map((docSnap) => {
+            const u = docSnap.data();
+            return {
+              id: docSnap.id,
+              name: u.name || 'Staff Member',
+              email: u.email || '',
+              phone: u.phone || '',
+              role: u.role || 'manager',
+              status: (u.is_active ? 'active' : 'on_leave') as StaffMember['status'],
+              is_active: u.is_active ?? true,
+              created_at: u.created_at?.toDate?.()?.toISOString() || u.created_at || new Date().toISOString(),
+            };
+          });
+          setStaff(list);
+        } else {
+          loadData();
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.warn('Real-time staff listener error:', err);
+        loadData();
+      }
+    );
+
+    return () => unsub();
   }, []);
 
   const filteredStaff = useMemo(() => {

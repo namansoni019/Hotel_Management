@@ -1,50 +1,62 @@
-import { getSupabaseClient, isSupabaseConfigured } from './supabase-helper';
+import {
+  collection,
+  doc,
+  getDocs,
+  getDoc,
+  addDoc,
+  updateDoc,
+  query,
+  where,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { dataRepository } from '@/lib/data/repository';
 import type { Room, RoomType, HousekeepingState, AvailabilityResult } from '@/lib/types';
 
 export const roomsService = {
   async getRoomTypes(): Promise<RoomType[]> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('room_types')
-        .select('*')
-        .eq('is_active', true);
-      if (!error && data) return data as RoomType[];
+    try {
+      const colRef = collection(db, 'room_types');
+      const q = query(colRef, where('is_active', '==', true));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        return snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as RoomType[];
+      }
+    } catch (err) {
+      console.warn('Firestore getRoomTypes fallback:', err);
     }
     return dataRepository.getRoomTypes();
   },
 
   async getRoomTypeById(id: string): Promise<RoomType | null> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-      const query = supabase.from('room_types').select('*');
-      const { data, error } = isUuid
-        ? await query.eq('id', id).maybeSingle()
-        : await query.eq('name', id).maybeSingle();
-      if (!error && data) return data as RoomType;
+    try {
+      const docRef = doc(db, 'room_types', id);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        return { id: snap.id, ...snap.data() } as RoomType;
+      }
+    } catch (err) {
+      console.warn('Firestore getRoomTypeById fallback:', err);
     }
     const all = dataRepository.getRoomTypes();
     return all.find((r) => r.id === id) || null;
   },
 
   async getRooms(): Promise<Room[]> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('rooms')
-        .select('*, room_types(*)');
-      if (!error && data) {
-        return data.map((r: any) => ({
-          id: r.id,
-          room_type_id: r.room_type_id,
-          room_number: r.room_number,
-          housekeeping_state: r.housekeeping_state as HousekeepingState,
-          notes: r.notes,
-          room_type: r.room_types,
-        }));
+    try {
+      const colRef = collection(db, 'rooms');
+      const snap = await getDocs(colRef);
+      if (!snap.empty) {
+        return snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as Room[];
       }
+    } catch (err) {
+      console.warn('Firestore getRooms fallback:', err);
     }
     return dataRepository.getRooms();
   },
@@ -55,51 +67,29 @@ export const roomsService = {
     housekeeping_state: HousekeepingState;
     notes?: string | null;
   }): Promise<Room> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('rooms')
-        .insert({
-          room_number: roomData.room_number,
-          room_type_id: roomData.room_type_id,
-          housekeeping_state: roomData.housekeeping_state,
-          notes: roomData.notes || null,
-        })
-        .select('*, room_types(*)')
-        .single();
-      if (!error && data) {
-        return {
-          id: data.id,
-          room_type_id: data.room_type_id,
-          room_number: data.room_number,
-          housekeeping_state: data.housekeeping_state,
-          notes: data.notes,
-          room_type: data.room_types,
-        };
-      }
+    try {
+      const colRef = collection(db, 'rooms');
+      const docRef = await addDoc(colRef, {
+        ...roomData,
+        created_at: serverTimestamp(),
+      });
+      const local = dataRepository.addRoom(roomData);
+      return { ...local, id: docRef.id };
+    } catch (err) {
+      console.warn('Firestore addRoom error:', err);
+      return dataRepository.addRoom(roomData);
     }
-    return dataRepository.addRoom(roomData);
   },
 
   async updateRoomHousekeeping(roomId: string, state: HousekeepingState): Promise<Room | null> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('rooms')
-        .update({ housekeeping_state: state })
-        .eq('id', roomId)
-        .select('*, room_types(*)')
-        .single();
-      if (!error && data) {
-        return {
-          id: data.id,
-          room_type_id: data.room_type_id,
-          room_number: data.room_number,
-          housekeeping_state: data.housekeeping_state,
-          notes: data.notes,
-          room_type: data.room_types,
-        };
-      }
+    try {
+      const docRef = doc(db, 'rooms', roomId);
+      await updateDoc(docRef, {
+        housekeeping_state: state,
+        updated_at: serverTimestamp(),
+      });
+    } catch (err) {
+      console.warn('Firestore updateRoomHousekeeping fallback:', err);
     }
     return dataRepository.updateRoomHousekeeping(roomId, state);
   },

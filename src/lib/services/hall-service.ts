@@ -1,39 +1,54 @@
-import { getSupabaseClient } from './supabase-helper';
+import {
+  collection,
+  doc,
+  getDocs,
+  getDoc,
+  setDoc,
+  updateDoc,
+  query,
+  orderBy,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { dataRepository } from '@/lib/data/repository';
 import type { Hall, EventLead } from '@/lib/types';
 
 export const hallService = {
   async getHall(): Promise<Hall> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('halls')
-        .select('*')
-        .limit(1)
-        .maybeSingle();
-      if (!error && data) {
+    try {
+      const docRef = doc(db, 'halls', 'crystal_ballroom');
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const d = snap.data();
         return {
-          id: data.id,
-          property_id: data.property_id,
-          name: data.name,
-          capacity: data.capacity,
-          description: data.description,
-          photos: data.photos || ['/images/hall/crystal-ballroom.jpg'],
-          packages: data.packages || [],
+          id: snap.id,
+          property_id: d.property_id || 'd0000000-0000-0000-0000-000000000001',
+          name: d.name,
+          capacity: d.capacity,
+          description: d.description,
+          photos: d.photos || ['/images/hall/crystal-ballroom.jpg'],
+          packages: d.packages || [],
         };
       }
+    } catch (err) {
+      console.warn('Firestore getHall fallback:', err);
     }
     return dataRepository.getHall();
   },
 
   async getEventLeads(): Promise<EventLead[]> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('event_leads')
-        .select('*, halls(*)')
-        .order('created_at', { ascending: false });
-      if (!error && data) return data as EventLead[];
+    try {
+      const colRef = collection(db, 'event_leads');
+      const q = query(colRef, orderBy('created_at', 'desc'));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        return snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as EventLead[];
+      }
+    } catch (err) {
+      console.warn('Firestore getEventLeads fallback:', err);
     }
     return dataRepository.getEventLeads();
   },
@@ -48,50 +63,34 @@ export const hallService = {
     setupNeeds?: string;
     notes?: string;
   }): Promise<EventLead> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data: hall } = await supabase.from('halls').select('id').limit(1).maybeSingle();
-      const hallId = hall ? hall.id : 'd0000000-0000-0000-0000-000000000001';
-      const reference = `EVT-AUR-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const localLead = dataRepository.createEventLead(data);
 
-      const { data: lead, error } = await supabase
-        .from('event_leads')
-        .insert({
-          hall_id: hallId,
-          hall_slot_id: null,
-          contact_name: data.contactName,
-          contact_phone: data.contactPhone,
-          contact_email: data.contactEmail || null,
-          event_type: data.eventType,
-          expected_guests: data.expectedGuests,
-          seating_layout: data.seatingLayout || null,
-          setup_needs: data.setupNeeds || null,
-          notes: data.notes || null,
-          status: 'new',
-          reference_code: reference,
-        })
-        .select('*, halls(*)')
-        .single();
-
-      if (!error && lead) return lead as EventLead;
+    try {
+      const docRef = doc(db, 'event_leads', localLead.id);
+      await setDoc(docRef, {
+        ...localLead,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      });
+    } catch (err) {
+      console.warn('Firestore createEventLead error:', err);
     }
-    return dataRepository.createEventLead(data);
+
+    return localLead;
   },
 
   async updateLeadStatus(
     leadId: string,
     updates: { status: EventLead['status']; quote_amount_minor?: number }
   ): Promise<EventLead | null> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(leadId);
-      const query = supabase
-        .from('event_leads')
-        .update(updates);
-      const { data, error } = isUuid
-        ? await query.eq('id', leadId).select('*, halls(*)').maybeSingle()
-        : await query.eq('reference_code', leadId).select('*, halls(*)').maybeSingle();
-      if (!error && data) return data as EventLead;
+    try {
+      const docRef = doc(db, 'event_leads', leadId);
+      await updateDoc(docRef, {
+        ...updates,
+        updated_at: serverTimestamp(),
+      });
+    } catch (err) {
+      console.warn('Firestore updateLeadStatus fallback:', err);
     }
     const leads = dataRepository.getEventLeads();
     const found = leads.find((l) => l.id === leadId || l.reference_code === leadId);

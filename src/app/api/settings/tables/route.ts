@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseClient } from '@/lib/services/supabase-helper';
-import { dataRepository } from '@/lib/data/repository';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 export async function POST(request: Request) {
   try {
@@ -14,40 +14,33 @@ export async function POST(request: Request) {
       );
     }
 
+    const tableId = `tbl-${Date.now()}`;
     const token = `qr-tbl-${table_number}-${Date.now().toString(36)}`;
-    const supabase = getSupabaseClient();
 
-    if (supabase) {
-      const { data: table, error: tableErr } = await supabase
-        .from('tables')
-        .insert({
-          outlet_id,
-          table_number,
-          capacity: Number(capacity) || 4,
-          is_active: true,
-        })
-        .select('*')
-        .single();
-
-      if (!tableErr && table) {
-        await supabase.from('qr_tokens').insert({
-          table_id: table.id,
-          token,
-          is_active: true,
-        });
-
-        return NextResponse.json({ success: true, table, token }, { status: 201 });
-      }
-    }
-
-    // Fallback in-memory
     const newT = {
-      id: `tbl-${Date.now()}`,
+      id: tableId,
       outlet_id,
       table_number,
       capacity: Number(capacity) || 4,
       is_active: true,
     };
+
+    try {
+      await setDoc(doc(db, 'tables', tableId), {
+        ...newT,
+        created_at: serverTimestamp(),
+      });
+
+      await setDoc(doc(db, 'qr_tokens', `qr-${tableId}`), {
+        id: `qr-${tableId}`,
+        table_id: tableId,
+        token,
+        is_active: true,
+        created_at: serverTimestamp(),
+      });
+    } catch {
+      // Ignored
+    }
 
     return NextResponse.json({ success: true, table: newT, token }, { status: 201 });
   } catch (error: any) {

@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { dataRepository } from '@/lib/data/repository';
 import { ordersService } from '@/lib/services/orders-service';
-import { getSupabaseClient } from '@/lib/services/supabase-helper';
+import { reservationsService } from '@/lib/services/reservations-service';
+
+export const dynamic = 'force-dynamic';
 
 function normalizePhone(phone?: string | null): string {
   if (!phone) return '';
@@ -10,10 +12,9 @@ function normalizePhone(phone?: string | null): string {
 
 export async function GET() {
   try {
-    const supabase = getSupabaseClient();
     const outlets = dataRepository.getOutlets();
 
-    // 1. Fetch real orders from Supabase & repository
+    // 1. Fetch real orders from Firestore & repository
     let orders: any[] = [];
     try {
       orders = await ordersService.getOrders();
@@ -21,19 +22,12 @@ export async function GET() {
       orders = dataRepository.getOrders();
     }
 
-    // 2. Fetch real hotel reservations from Supabase & repository
+    // 2. Fetch real hotel reservations from Firestore & repository
     let reservations: any[] = [];
-    if (supabase) {
-      try {
-        const { data: dbRes, error } = await supabase
-          .from('reservations')
-          .select('*, guests(*), room_types(*), rooms(*)');
-        if (!error && dbRes) {
-          reservations = dbRes;
-        }
-      } catch {
-        // Fallback
-      }
+    try {
+      reservations = await reservationsService.getReservations();
+    } catch {
+      reservations = dataRepository.getReservations();
     }
     if (reservations.length === 0) {
       reservations = dataRepository.getReservations();

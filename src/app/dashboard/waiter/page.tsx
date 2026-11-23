@@ -14,6 +14,9 @@ import {
   ChevronRight,
   Filter,
 } from 'lucide-react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { ordersService } from '@/lib/services/orders-service';
 import { dataRepository } from '@/lib/data/repository';
 import type { Order } from '@/lib/types';
 
@@ -23,26 +26,56 @@ export default function FloorStewardPage() {
   const [sourceFilter, setSourceFilter] = useState<'all' | 'dine_in' | 'room_service'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const loadData = () => {
-    // Only dine-in and room-service are relevant for Floor Steward queue
-    const all = dataRepository.getOrders();
-    setOrders(
-      all.filter(
-        (o) =>
-          o.order_type === 'dine_in' ||
-          o.order_type === 'room_service' ||
-          o.fulfilment_mode === 'dine_in'
-      )
-    );
-  };
-
   useEffect(() => {
-    loadData();
+    // Real-time Firestore orders listener
+    const unsubOrders = onSnapshot(
+      collection(db, 'orders'),
+      (snap) => {
+        if (!snap.empty) {
+          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Order[];
+          list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+          setOrders(
+            list.filter(
+              (o) =>
+                o.order_type === 'dine_in' ||
+                o.order_type === 'room_service' ||
+                o.fulfilment_mode === 'dine_in'
+            )
+          );
+        } else {
+          const all = dataRepository.getOrders();
+          setOrders(
+            all.filter(
+              (o) =>
+                o.order_type === 'dine_in' ||
+                o.order_type === 'room_service' ||
+                o.fulfilment_mode === 'dine_in'
+            )
+          );
+        }
+      },
+      () => {
+        const all = dataRepository.getOrders();
+        setOrders(
+          all.filter(
+            (o) =>
+              o.order_type === 'dine_in' ||
+              o.order_type === 'room_service' ||
+              o.fulfilment_mode === 'dine_in'
+          )
+        );
+      }
+    );
+
+    return () => unsubOrders();
   }, []);
 
-  const handleUpdateStatus = (id: string, status: Order['status']) => {
-    dataRepository.updateOrderStatus(id, status);
-    loadData();
+  const handleUpdateStatus = async (id: string, status: Order['status']) => {
+    try {
+      await ordersService.updateOrderStatus(id, status);
+    } catch {
+      dataRepository.updateOrderStatus(id, status);
+    }
   };
 
   const filteredOrders = useMemo(() => {

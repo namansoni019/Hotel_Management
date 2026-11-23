@@ -104,60 +104,69 @@ export function DeluxeRoomsSection() {
   }, []);
 
   return (
-    <section className="relative py-16 sm:py-20 overflow-hidden" style={{ backgroundColor: '#fffaf1' }}>
+<section className="relative py-16 sm:py-20 overflow-hidden" style={{ backgroundColor: 'var(--heritage-ivory, #fff7e8)' }}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 pb-4 border-b border-[#dfcdb1]/60">
-          <div className="max-w-2xl text-left">
-            <span
-              className="text-xs sm:text-sm font-semibold tracking-[0.2em] uppercase text-[#d8aa67] block mb-1"
-              style={{ letterSpacing: '0.22em' }}
-            >
-              Our Rooms
-            </span>
-            <h2
-              className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#781c1c] leading-[1.05] mb-2"
-              style={{
-                fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
-              }}
-            >
-              Stay in Timeless Elegance
-            </h2>
-            <p className="text-xs sm:text-sm text-[#4f0809]/80 font-normal leading-relaxed">
-              Experience a perfect blend of royal charm and modern luxury with our beautifully designed Deluxe Rooms.
-            </p>
+        <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-14">
+          <span className="text-[10px] sm:text-xs font-bold tracking-[0.22em] uppercase text-[#9C7A45] block mb-1.5">
+            Our Rooms
+          </span>
+          <h2
+            className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#4F0809] leading-tight mb-2.5"
+            style={{
+              fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
+            }}
+          >
+            Stay in Timeless Elegance
+          </h2>
+
+          {/* Diamond-Tipped Gold Rule */}
+          <div className="flex items-center justify-center gap-2 w-40 sm:w-48 mx-auto mb-3">
+            <span className="h-[1px] flex-1 bg-[#C99A52]/60" />
+            <span className="w-1.5 h-1.5 rotate-45 border border-[#C99A52] bg-[#D8AA67]/40" />
+            <span className="h-[1px] flex-1 bg-[#C99A52]/60" />
           </div>
+
+          <p className="text-xs sm:text-sm text-[#4F0809]/80 font-normal leading-relaxed">
+            Experience a perfect blend of royal charm and modern luxury with our beautifully designed Deluxe Rooms.
+          </p>
         </div>
 
-        {/* 3 Rectangular Cards in a Single Row (3 Cards Per Line) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-7 mb-4">
+        {/* 3 Jharokha-Styled Cards in a Single Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-7 mb-4">
           {DELUXE_ROOMS.map((room) => (
             <div
               key={room.id}
               onClick={() => setSelectedRoom(room)}
-              className="group flex flex-col justify-between bg-white rounded-2xl overflow-hidden border border-[#dfcdb1] hover:border-[#d8aa67] shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer text-left"
+              className="group flex flex-col justify-between bg-[#FDF8EE] rounded-t-3xl rounded-b-xl overflow-hidden border border-[#C99A52]/70 hover:border-[#4F0809] hover:-translate-y-1 transition-all duration-300 ease-out cursor-pointer text-left"
             >
-              {/* Rectangular Image */}
-              <div className="relative aspect-[16/10] w-full overflow-hidden bg-stone-100">
-                <Image
-                  src={room.image}
-                  alt={room.name}
-                  fill
-                  className="object-cover group-hover:scale-105 transition-transform duration-500"
-                />
-                <span className="absolute top-3 left-3 bg-[#4f0809]/90 text-[#d8aa67] border border-[#d8aa67]/60 text-[10px] font-semibold px-2.5 py-0.5 rounded-full uppercase tracking-wider backdrop-blur-sm">
-                  {room.tag}
-                </span>
-                <span className="absolute bottom-3 right-3 bg-white/95 text-[#4f0809] text-[10px] font-semibold px-2 py-0.5 rounded shadow-sm">
-                  Deluxe Room
-                </span>
+              {/* Framed Jharokha Image */}
+              <div className="p-2.5 pb-0">
+                <div className="relative aspect-[16/10] w-full overflow-hidden rounded-t-2xl rounded-b-md bg-[#EFE6D5]">
+                  <Image
+                    src={room.image}
+                    alt={room.name}
+                    fill
+                    className="object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#2B0507]/55 via-transparent to-transparent" />
+
+                  <span className="absolute top-2.5 left-2.5 inline-flex items-center gap-1.5 bg-[#4F0809]/95 text-[#F7E5C3] text-[9px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-[0.16em]">
+                    <span className="w-1 h-1 rounded-full bg-[#D8AA67]" />
+                    {room.tag}
+                  </span>
+
+                  <span className="absolute bottom-2.5 right-2.5 bg-[#FDF8EE]/95 text-[#4F0809] text-[9px] font-bold uppercase tracking-[0.14em] px-2.5 py-0.5 rounded-full">
+                    Deluxe Room
+                  </span>
+                </div>
               </div>
 
-              {/* Rectangular Card Body */}
-              <div className="p-5 flex-1 flex flex-col justify-between">
+              {/* Card Body */}
+              <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
                 <div>
                   <h3
-                    className="text-xl font-bold text-[#781c1c] mb-1.5 group-hover:text-[#d8aa67] transition-colors"
+                    className="text-xl sm:text-2xl font-bold text-[#4F0809] mb-1.5 group-hover:text-[#9C7A45] transition-colors duration-200"
                     style={{
                       fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
                     }}
@@ -165,38 +174,50 @@ export function DeluxeRoomsSection() {
                     {room.name}
                   </h3>
 
-                  <p className="text-xs text-[#4f0809]/75 line-clamp-2 leading-relaxed mb-4">
+                  {/* Ornamental Gold Divider */}
+                  <div className="flex items-center gap-1.5 mb-2.5">
+                    <span className="h-[1px] w-6 bg-[#C99A52]" />
+                    <span className="w-1.5 h-1.5 rotate-45 border border-[#C99A52] bg-[#D8AA67]/40" />
+                    <span className="h-[1px] flex-1 bg-[#C99A52]/30" />
+                  </div>
+
+                  <p className="text-xs text-[#4F0809]/80 line-clamp-2 leading-relaxed mb-4 font-light">
                     {room.shortDesc}
                   </p>
 
-                  {/* Clean Specs Row */}
-                  <div className="flex items-center justify-between text-xs text-[#857866] pt-3 border-t border-[#dfcdb1]/50 mb-4">
-                    <span className="flex items-center">
-                      <Users className="w-3.5 h-3.5 text-[#d8aa67] mr-1.5" />
+                  {/* Clean Specs Row with Diamond Separators */}
+                  <div className="flex items-center justify-between text-[11px] sm:text-xs text-[#6B533B] font-medium pt-3 border-t border-[#C99A52]/30 mb-4">
+                    <span className="inline-flex items-center">
+                      <Users className="w-3.5 h-3.5 text-[#9C7A45] mr-1.5 shrink-0" />
                       {room.guests}
                     </span>
-                    <span className="flex items-center">
-                      <BedDouble className="w-3.5 h-3.5 text-[#d8aa67] mr-1.5" />
+                    <span className="text-[#C99A52] text-[9px]">&#9830;</span>
+                    <span className="inline-flex items-center">
+                      <BedDouble className="w-3.5 h-3.5 text-[#9C7A45] mr-1.5 shrink-0" />
                       {room.bed}
                     </span>
-                    <span className="flex items-center">
-                      <Maximize2 className="w-3.5 h-3.5 text-[#d8aa67] mr-1.5" />
+                    <span className="text-[#C99A52] text-[9px]">&#9830;</span>
+                    <span className="inline-flex items-center">
+                      <Maximize2 className="w-3.5 h-3.5 text-[#9C7A45] mr-1.5 shrink-0" />
                       {room.size}
                     </span>
                   </div>
                 </div>
 
-                {/* Price and Action Buttons */}
-                <div className="pt-3 border-t border-[#dfcdb1]/60 flex items-center justify-between">
+                {/* Price and Pill Action Buttons */}
+                <div className="pt-3 border-t border-[#C99A52]/40 flex items-center justify-between gap-2">
                   <div>
+                    <span className="text-[9px] uppercase tracking-[0.16em] text-[#856B4D] font-semibold block">
+                      Royal Tariff
+                    </span>
                     <span
-                      className="text-xl font-bold text-[#781c1c]"
+                      className="text-xl font-bold text-[#4F0809] leading-tight"
                       style={{
                         fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
                       }}
                     >
                       {room.price}
-                      <span className="text-xs font-normal text-[#857866]"> / night</span>
+                      <span className="text-[11px] font-normal text-[#6B533B]"> / night</span>
                     </span>
                   </div>
 
@@ -207,16 +228,17 @@ export function DeluxeRoomsSection() {
                         e.stopPropagation();
                         setSelectedRoom(room);
                       }}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[#781c1c] border border-[#dfcdb1] hover:border-[#d8aa67] hover:bg-[#fffaf1] transition-all cursor-pointer"
+                      className="px-3.5 py-2 rounded-full text-[11px] font-bold uppercase tracking-[0.1em] text-[#4F0809] bg-[#D8AA67]/25 hover:bg-[#D8AA67]/45 transition-colors cursor-pointer"
                     >
                       Details
                     </button>
                     <Link
                       href={`/book?roomTypeId=${room.id}`}
                       onClick={(e) => e.stopPropagation()}
-                      className="px-4 py-1.5 rounded-lg text-xs font-semibold text-[#fff8eb] bg-[#4f0809] hover:bg-[#781c1c] transition-all shadow cursor-pointer"
+                      className="inline-flex items-center space-x-1 px-4 py-2 rounded-full text-[11px] font-bold uppercase tracking-[0.12em] text-[#FFF8EB] bg-[#4F0809] hover:bg-[#680b0c] transition-colors cursor-pointer"
                     >
-                      Book
+                      <span>Book</span>
+                      <ArrowRight className="w-3 h-3 text-[#D8AA67]" />
                     </Link>
                   </div>
                 </div>
@@ -226,43 +248,44 @@ export function DeluxeRoomsSection() {
         </div>
       </div>
 
-      {/* ── AMENITIES MODAL (OPENS ON CARD CLICK) ── */}
+      {/* ── AMENITIES MODAL (SINGLE BORDER, SHADOW-FREE) ── */}
       {selectedRoom && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200"
           onClick={() => setSelectedRoom(null)}
         >
           <div
-            className="relative w-full max-w-xl bg-[#fffaf1] rounded-3xl border border-[#d8aa67]/60 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col text-left text-[#151c1a]"
+            className="relative w-full max-w-xl bg-[#FDF8EE] rounded-t-3xl rounded-b-2xl border border-[#C99A52]/80 overflow-hidden max-h-[90vh] flex flex-col text-left text-[#4F0809]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header Image */}
-            <div className="relative h-56 sm:h-64 w-full shrink-0">
+            <div className="relative h-52 sm:h-64 w-full shrink-0 bg-[#EFE6D5]">
               <Image
                 src={selectedRoom.image}
                 alt={selectedRoom.name}
                 fill
                 className="object-cover"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#2B0507]/90 via-[#2B0507]/35 to-transparent" />
 
               {/* Close Button */}
               <button
                 type="button"
                 onClick={() => setSelectedRoom(null)}
                 aria-label="Close modal"
-                className="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/60 hover:bg-[#4f0809] text-white flex items-center justify-center backdrop-blur-sm border border-white/20 transition-all cursor-pointer shadow-lg"
+                className="absolute top-4 right-4 w-9 h-9 rounded-full bg-[#4F0809]/85 hover:bg-[#4F0809] text-[#FFF8EB] flex items-center justify-center backdrop-blur-sm transition-colors cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4 text-[#D8AA67]" />
               </button>
 
               {/* Title & Badge */}
               <div className="absolute bottom-4 left-5 right-5 text-white">
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#d8aa67] bg-[#4f0809]/80 px-2.5 py-0.5 rounded-full border border-[#d8aa67]/50 inline-block mb-1">
+                <span className="inline-flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.2em] text-[#F7E5C3] bg-[#4F0809]/95 px-2.5 py-1 rounded-full mb-1.5">
+                  <span className="w-1 h-1 rounded-full bg-[#D8AA67]" />
                   Deluxe Room
                 </span>
                 <h3
-                  className="text-2xl sm:text-3xl font-bold text-[#fff8eb]"
+                  className="text-2xl sm:text-3xl font-bold text-[#FFF8EB]"
                   style={{
                     fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
                   }}
@@ -273,49 +296,53 @@ export function DeluxeRoomsSection() {
             </div>
 
             {/* Scrollable Content */}
-            <div className="p-6 sm:p-7 overflow-y-auto space-y-5">
-              {/* Specs */}
-              <div className="flex items-center justify-between text-xs sm:text-sm text-[#4f0809] bg-white p-3 rounded-xl border border-[#dfcdb1]/70">
+            <div className="p-5 sm:p-6 overflow-y-auto space-y-5">
+              {/* Specs Strip */}
+              <div className="flex items-center justify-between text-xs sm:text-sm text-[#4F0809] bg-[#F7EFE0] px-4 py-3 rounded-xl">
                 <span className="flex items-center font-medium">
-                  <Users className="w-4 h-4 text-[#d8aa67] mr-1.5" />
+                  <Users className="w-4 h-4 text-[#9C7A45] mr-1.5 shrink-0" />
                   {selectedRoom.guests}
                 </span>
-                <span className="text-[#dfcdb1]">•</span>
+                <span className="text-[#C99A52] text-[10px]">&#9830;</span>
                 <span className="flex items-center font-medium">
-                  <BedDouble className="w-4 h-4 text-[#d8aa67] mr-1.5" />
+                  <BedDouble className="w-4 h-4 text-[#9C7A45] mr-1.5 shrink-0" />
                   {selectedRoom.bed}
                 </span>
-                <span className="text-[#dfcdb1]">•</span>
+                <span className="text-[#C99A52] text-[10px]">&#9830;</span>
                 <span className="flex items-center font-medium">
-                  <Maximize2 className="w-4 h-4 text-[#d8aa67] mr-1.5" />
+                  <Maximize2 className="w-4 h-4 text-[#9C7A45] mr-1.5 shrink-0" />
                   {selectedRoom.size}
                 </span>
               </div>
 
               {/* Description */}
               <div>
-                <p className="text-xs sm:text-sm text-[#4f0809]/90 leading-relaxed font-light">
+                <p className="text-xs sm:text-sm text-[#4F0809]/85 leading-relaxed font-normal">
                   {selectedRoom.fullDesc}
                 </p>
               </div>
 
-              {/* Room Facilities (Exact 5 facilities requested by user) */}
+              {/* Room Facilities */}
               <div>
-                <h4 className="text-xs uppercase font-bold tracking-wider text-[#857866] mb-3">
-                  Room Facilities
-                </h4>
-                <div className="space-y-2">
+                <div className="flex items-center gap-2 mb-3">
+                  <h4 className="text-[11px] uppercase font-bold tracking-[0.18em] text-[#9C7A45]">
+                    Room Facilities
+                  </h4>
+                  <span className="h-[1px] flex-1 bg-[#C99A52]/30" />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {ROOM_FACILITIES.map((facility, idx) => {
                     const Icon = facility.icon;
                     return (
                       <div
                         key={idx}
-                        className="flex items-center space-x-3 p-3 rounded-xl bg-white border border-[#dfcdb1]/70 shadow-xs"
+                        className="flex items-center space-x-3 p-2.5 rounded-xl bg-[#F7EFE0]/80"
                       >
-                        <div className="w-8 h-8 rounded-lg bg-[#fffaf1] border border-[#d8aa67]/50 flex items-center justify-center text-[#781c1c] shrink-0">
-                          <Icon className="w-4 h-4" />
+                        <div className="w-8 h-8 rounded-full bg-[#FDF8EE] flex items-center justify-center text-[#4F0809] shrink-0">
+                          <Icon className="w-4 h-4 text-[#9C7A45]" />
                         </div>
-                        <span className="text-xs sm:text-sm font-medium text-[#241F1A]">
+                        <span className="text-xs sm:text-sm font-medium text-[#4F0809]">
                           {facility.name}
                         </span>
                       </div>
@@ -326,38 +353,36 @@ export function DeluxeRoomsSection() {
             </div>
 
             {/* Modal Bottom Action Bar */}
-            <div className="p-4 sm:p-5 bg-white border-t border-[#dfcdb1] flex items-center justify-between shrink-0">
+            <div className="p-4 sm:p-5 bg-[#F7EFE0] border-t border-[#C99A52]/40 flex items-center justify-between shrink-0">
               <div>
-                <span className="text-[11px] text-[#857866] block">Tariff</span>
+                <span className="text-[9px] uppercase tracking-[0.16em] text-[#856B4D] font-semibold block">
+                  Royal Tariff
+                </span>
                 <span
-                  className="text-xl sm:text-2xl font-bold text-[#781c1c]"
+                  className="text-xl sm:text-2xl font-bold text-[#4F0809]"
                   style={{
                     fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
                   }}
                 >
                   {selectedRoom.price}
-                  <span className="text-xs font-normal text-[#857866]"> / night</span>
+                  <span className="text-xs font-normal text-[#6B533B]"> / night</span>
                 </span>
               </div>
 
-              <div className="flex items-center space-x-2.5">
+              <div className="flex items-center space-x-2">
                 <button
                   type="button"
                   onClick={() => setSelectedRoom(null)}
-                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-[#4f0809] hover:bg-[#fffaf1] border border-[#dfcdb1] transition-all cursor-pointer"
+                  className="px-4 py-2.5 rounded-full text-xs font-bold uppercase tracking-[0.1em] text-[#4F0809] bg-[#FDF8EE] hover:bg-[#EFE6D5] transition-colors cursor-pointer"
                 >
                   Close
                 </button>
                 <Link
                   href={`/book?roomTypeId=${selectedRoom.id}`}
-                  className="px-6 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-[#fff8eb] bg-[#4f0809] hover:bg-[#781c1c] transition-all shadow-md flex items-center space-x-1.5 cursor-pointer"
-                  style={{
-                    fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
-                    fontSize: '16px',
-                  }}
+                  className="inline-flex items-center space-x-1.5 px-5 py-2.5 rounded-full text-xs font-bold uppercase tracking-[0.12em] text-[#FFF8EB] bg-[#4F0809] hover:bg-[#680b0c] transition-colors cursor-pointer"
                 >
                   <span>Book Now</span>
-                  <ArrowRight className="w-4 h-4 ml-1" />
+                  <ArrowRight className="w-3.5 h-3.5 text-[#D8AA67]" />
                 </Link>
               </div>
             </div>

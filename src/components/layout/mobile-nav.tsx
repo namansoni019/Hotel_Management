@@ -46,7 +46,7 @@ export const MobileNav: React.FC = () => {
       window.removeEventListener('resize', handleScroll);
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
-  }, []);
+  }, [pathname]);
 
   // Hide on staff dashboard and dedicated auth pages
   if (pathname.startsWith('/dashboard') || pathname === '/login' || pathname === '/signup' || pathname.startsWith('/auth')) {

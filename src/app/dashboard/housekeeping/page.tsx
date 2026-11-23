@@ -13,6 +13,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import type { Room, HousekeepingState, Reservation } from '@/lib/types';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { dataRepository } from '@/lib/data/repository';
 
 export default function HousekeepingOperationsPage() {
@@ -33,29 +35,52 @@ export default function HousekeepingOperationsPage() {
     ac_lights: false,
   });
 
-  const loadHousekeepingData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const [roomsRes, resRes] = await Promise.all([
-        fetch('/api/rooms').then((r) => (r.ok ? r.json() : { rooms: [] })),
-        fetch('/api/reservations').then((r) => (r.ok ? r.json() : { reservations: [] })),
-      ]);
-
-      const fetchedRooms = roomsRes.rooms?.length ? roomsRes.rooms : dataRepository.getRooms();
-      setRooms(fetchedRooms);
-      setReservations(resRes.reservations || []);
-    } catch {
-      setRooms(dataRepository.getRooms());
-    } finally {
-      setIsLoading(false);
+  useEffect(() => {
+    // Clear legacy localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('dashboard_housekeeping');
+      } catch {}
     }
+
+    const unsubRooms = onSnapshot(
+      collection(db, 'rooms'),
+      (snap) => {
+        if (!snap.empty) {
+          setRooms(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Room[]);
+        } else {
+          setRooms(dataRepository.getRooms());
+        }
+        setIsLoading(false);
+      },
+      () => {
+        setRooms(dataRepository.getRooms());
+        setIsLoading(false);
+      }
+    );
+
+    const unsubRes = onSnapshot(
+      collection(db, 'reservations'),
+      (snap) => {
+        if (!snap.empty) {
+          setReservations(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Reservation[]);
+        } else {
+          setReservations(dataRepository.getReservations());
+        }
+      },
+      () => setReservations(dataRepository.getReservations())
+    );
+
+    return () => {
+      unsubRooms();
+      unsubRes();
+    };
   }, []);
 
-  useEffect(() => {
-    loadHousekeepingData();
-    const interval = setInterval(loadHousekeepingData, 10000);
-    return () => clearInterval(interval);
-  }, [loadHousekeepingData]);
+  const loadHousekeepingData = () => {
+    setIsLoading(true);
+    setTimeout(() => setIsLoading(false), 400);
+  };
 
   // Update housekeeping state via API & local sync
   const updateRoomState = async (roomId: string, nextState: HousekeepingState, notes?: string) => {

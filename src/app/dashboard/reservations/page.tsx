@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { formatMoney } from '@/lib/utils/money';
 import { TapeChart } from '@/components/dashboard/reservations/tape-chart';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import type { Reservation, Room } from '@/lib/types';
 import {
   Search,
@@ -27,8 +29,46 @@ export default function ReservationsDashboardPage() {
   const [selectedResForCheckIn, setSelectedResForCheckIn] = useState<Reservation | null>(null);
   const [assignedRoomId, setAssignedRoomId] = useState('');
 
+  React.useEffect(() => {
+    // Clear legacy localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('dashboard_reservations');
+      } catch {}
+    }
+
+    const unsubRes = onSnapshot(
+      collection(db, 'reservations'),
+      (snap) => {
+        if (!snap.empty) {
+          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Reservation[];
+          list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+          setReservations(list);
+        }
+        setIsLoading(false);
+      },
+      () => {
+        loadData();
+      }
+    );
+
+    const unsubRooms = onSnapshot(
+      collection(db, 'rooms'),
+      (snap) => {
+        if (!snap.empty) {
+          setRooms(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Room[]);
+        }
+      },
+      () => {}
+    );
+
+    return () => {
+      unsubRes();
+      unsubRooms();
+    };
+  }, []);
+
   const loadData = async () => {
-    setIsLoading(true);
     try {
       const [resData, roomData] = await Promise.all([
         fetch('/api/reservations').then((r) => (r.ok ? r.json() : { reservations: [] })),
@@ -42,10 +82,6 @@ export default function ReservationsDashboardPage() {
       setIsLoading(false);
     }
   };
-
-  React.useEffect(() => {
-    loadData();
-  }, []);
 
   const availableRooms = rooms.filter((r) => r.housekeeping_state === 'available');
 
@@ -78,7 +114,7 @@ export default function ReservationsDashboardPage() {
       ]);
       await loadData();
     } catch (err) {
-      console.error('Failed to check in guest in Supabase:', err);
+      console.error('Failed to check in guest:', err);
     } finally {
       setSelectedResForCheckIn(null);
       setAssignedRoomId('');
@@ -106,7 +142,7 @@ export default function ReservationsDashboardPage() {
       await Promise.all(promises);
       await loadData();
     } catch (err) {
-      console.error('Failed to check out guest in Supabase:', err);
+      console.error('Failed to check out guest:', err);
     }
   };
 
@@ -119,7 +155,7 @@ export default function ReservationsDashboardPage() {
       });
       await loadData();
     } catch (err) {
-      console.error('Failed to cancel reservation in Supabase:', err);
+      console.error('Failed to cancel reservation:', err);
     }
   };
 

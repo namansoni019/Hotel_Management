@@ -15,6 +15,9 @@ import {
   Filter,
   Trash2,
 } from 'lucide-react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { roomsService } from '@/lib/services/rooms-service';
 import { dataRepository } from '@/lib/data/repository';
 import type { Room, HousekeepingState, RoomType } from '@/lib/types';
 
@@ -33,42 +36,85 @@ export default function RoomsHousekeepingPage() {
   const [newRoomState, setNewRoomState] = useState<HousekeepingState>('available');
   const [newRoomNotes, setNewRoomNotes] = useState('');
 
-  const fetchRoomsData = useCallback(() => {
-    const rms = dataRepository.getRooms();
-    const rt = dataRepository.getRoomTypes();
-    setRooms(rms);
-    setRoomTypes(rt);
-    if (rt.length > 0 && !newRoomTypeId) {
-      setNewRoomTypeId(rt[0].id);
-    }
-  }, [newRoomTypeId]);
-
   useEffect(() => {
-    fetchRoomsData();
-  }, [fetchRoomsData]);
+    // Clear legacy localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('dashboard_rooms');
+      } catch {}
+    }
 
-  const handleStateChange = (roomId: string, newState: HousekeepingState) => {
-    dataRepository.updateRoomHousekeeping(roomId, newState);
-    fetchRoomsData();
+    setRoomTypes(dataRepository.getRoomTypes());
+    const rts = dataRepository.getRoomTypes();
+    if (rts.length > 0 && !newRoomTypeId) {
+      setNewRoomTypeId(rts[0].id);
+    }
+
+    const unsubRooms = onSnapshot(
+      collection(db, 'rooms'),
+      (snap) => {
+        if (!snap.empty) {
+          setRooms(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Room[]);
+        } else {
+          setRooms(dataRepository.getRooms());
+        }
+      },
+      () => setRooms(dataRepository.getRooms())
+    );
+
+    const unsubTypes = onSnapshot(
+      collection(db, 'room_types'),
+      (snap) => {
+        if (!snap.empty) {
+          setRoomTypes(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as RoomType[]);
+        }
+      },
+      () => {}
+    );
+
+    return () => {
+      unsubRooms();
+      unsubTypes();
+    };
+  }, []);
+
+  const fetchRoomsData = useCallback(() => {
+    // Maintained for manual reload
+  }, []);
+
+  const handleStateChange = async (roomId: string, newState: HousekeepingState) => {
+    try {
+      await roomsService.updateRoomHousekeeping(roomId, newState);
+    } catch {
+      dataRepository.updateRoomHousekeeping(roomId, newState);
+    }
   };
 
   const handleDeleteRoom = (roomId: string, roomNumber: string) => {
     if (window.confirm(`Are you sure you want to delete Room ${roomNumber}?`)) {
       dataRepository.deleteRoom(roomId);
-      fetchRoomsData();
     }
   };
 
-  const handleCreateRoom = (e: React.FormEvent) => {
+  const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRoomNumber || !newRoomTypeId) return;
 
-    dataRepository.addRoom({
-      room_number: newRoomNumber.trim(),
-      room_type_id: newRoomTypeId,
-      housekeeping_state: newRoomState,
-      notes: newRoomNotes || null,
-    });
+    try {
+      await roomsService.addRoom({
+        room_number: newRoomNumber.trim(),
+        room_type_id: newRoomTypeId,
+        housekeeping_state: newRoomState,
+        notes: newRoomNotes || null,
+      });
+    } catch {
+      dataRepository.addRoom({
+        room_number: newRoomNumber.trim(),
+        room_type_id: newRoomTypeId,
+        housekeeping_state: newRoomState,
+        notes: newRoomNotes || null,
+      });
+    }
 
     setIsAddModalOpen(false);
     setNewRoomNumber('');

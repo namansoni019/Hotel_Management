@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseClient } from '@/lib/services/supabase-helper';
+import { collection, getDocs, addDoc, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+
+export const dynamic = 'force-dynamic';
 
 export interface AuditRecord {
   id: string;
@@ -53,13 +56,20 @@ let localAudits = [...LOCAL_AUDIT_LOGS];
 
 export async function GET() {
   try {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('audit_events')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (!error && data) return NextResponse.json({ success: true, events: data });
+    try {
+      const auditRef = collection(db, 'audit_events');
+      const q = query(auditRef, orderBy('created_at', 'desc'));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const events = snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+          created_at: d.data().created_at?.toDate?.()?.toISOString() || d.data().created_at || new Date().toISOString(),
+        }));
+        return NextResponse.json({ success: true, events });
+      }
+    } catch {
+      // Fallback to local
     }
     return NextResponse.json({ success: true, events: localAudits });
   } catch (error: any) {
@@ -84,9 +94,9 @@ export async function POST(request: Request) {
       created_at: new Date().toISOString(),
     };
 
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      await supabase.from('audit_events').insert({
+    try {
+      const auditRef = collection(db, 'audit_events');
+      const docRef = await addDoc(auditRef, {
         actor_name: newEvent.actor_name,
         actor_role: newEvent.actor_role,
         action_type: newEvent.action_type,
@@ -94,7 +104,11 @@ export async function POST(request: Request) {
         entity_id: newEvent.entity_id,
         details: newEvent.details,
         ip_address: newEvent.ip_address,
+        created_at: serverTimestamp(),
       });
+      newEvent.id = docRef.id;
+    } catch {
+      // Keep local
     }
 
     localAudits = [newEvent, ...localAudits];

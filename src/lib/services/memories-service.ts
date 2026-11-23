@@ -1,4 +1,16 @@
-import { getSupabaseClient } from './supabase-helper';
+import {
+  collection,
+  doc,
+  getDocs,
+  getDoc,
+  setDoc,
+  updateDoc,
+  query,
+  where,
+  orderBy,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 export interface MemoryRecord {
   id: string;
@@ -68,27 +80,14 @@ const LOCAL_FALLBACK_MEMORIES: MemoryRecord[] = [
   },
   {
     id: 'mem-5',
-    event_name: 'Royal Heritage Diwali Gala',
+    event_name: 'Deepotsav Festival of Lights',
     event_type: 'festival',
-    host_name: 'Rajmahal Annual Celebration',
-    celebration_date: 'November 2024',
-    story:
-      'Over 2,000 earthen diyas lighting up every arch and carved jharokha of the palace. An unforgettable celebration of light, classical sitar, and royal sweets.',
-    photo_url: '/images/hero_haveli.jpg',
-    likes_count: 420,
-    is_featured: true,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: 'mem-6',
-    event_name: 'Lakeview Jharokha Sunrise Breakfast',
-    event_type: 'anniversary',
-    host_name: 'Aarav & Meera',
+    host_name: 'Palace Annual Heritage Gala',
     celebration_date: 'October 2024',
     story:
-      'Steaming kulhad chai and piping hot pyaaz kachoris while watching the morning mist rise over Lake Pichola from our private jharokha.',
-    photo_url: '/images/rooms/jharokha-room.jpg',
-    likes_count: 295,
+      'Over 5,000 clay diyas lit across the grand palace courtyards, accompanied by Kathak dancers and celebratory royal sweets. An unforgettable spectacle of Rajasthan.',
+    photo_url: '/images/dining/restaurant-ambiance.png',
+    likes_count: 420,
     is_featured: true,
     created_at: new Date().toISOString(),
   },
@@ -98,20 +97,21 @@ let localMemories = [...LOCAL_FALLBACK_MEMORIES];
 
 export const memoriesService = {
   async getMemories(eventType?: string): Promise<MemoryRecord[]> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      let query = supabase
-        .from('royal_memories')
-        .select('*')
-        .eq('is_featured', true)
-        .order('created_at', { ascending: false });
+    try {
+      const colRef = collection(db, 'royal_memories');
+      const q = eventType && eventType !== 'all'
+        ? query(colRef, where('is_featured', '==', true), where('event_type', '==', eventType), orderBy('created_at', 'desc'))
+        : query(colRef, where('is_featured', '==', true), orderBy('created_at', 'desc'));
 
-      if (eventType && eventType !== 'all') {
-        query = query.eq('event_type', eventType);
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        return snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as MemoryRecord[];
       }
-
-      const { data, error } = await query;
-      if (!error && data) return data as MemoryRecord[];
+    } catch (err) {
+      console.warn('Firestore getMemories fallback:', err);
     }
 
     if (eventType && eventType !== 'all') {
@@ -128,24 +128,6 @@ export const memoriesService = {
     story: string;
     photo_url?: string;
   }): Promise<MemoryRecord> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data: newMem, error } = await supabase
-        .from('royal_memories')
-        .insert({
-          event_name: data.event_name,
-          event_type: data.event_type,
-          host_name: data.host_name,
-          celebration_date: data.celebration_date || 'Recent Celebration',
-          story: data.story,
-          photo_url: data.photo_url || '/images/hall/crystal-ballroom.jpg',
-          is_featured: true,
-        })
-        .select('*')
-        .single();
-      if (!error && newMem) return newMem as MemoryRecord;
-    }
-
     const created: MemoryRecord = {
       id: `mem-${Date.now()}`,
       event_name: data.event_name,
@@ -158,26 +140,32 @@ export const memoriesService = {
       is_featured: true,
       created_at: new Date().toISOString(),
     };
+
+    try {
+      const docRef = doc(db, 'royal_memories', created.id);
+      await setDoc(docRef, {
+        ...created,
+        created_at: serverTimestamp(),
+      });
+    } catch (err) {
+      console.warn('Firestore createMemory fallback:', err);
+    }
+
     localMemories = [created, ...localMemories];
     return created;
   },
 
   async likeMemory(id: string): Promise<number | null> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data: mem } = await supabase
-        .from('royal_memories')
-        .select('likes_count')
-        .eq('id', id)
-        .single();
-      if (mem) {
-        const nextLikes = mem.likes_count + 1;
-        await supabase
-          .from('royal_memories')
-          .update({ likes_count: nextLikes })
-          .eq('id', id);
+    try {
+      const docRef = doc(db, 'royal_memories', id);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const nextLikes = (snap.data().likes_count || 0) + 1;
+        await updateDoc(docRef, { likes_count: nextLikes });
         return nextLikes;
       }
+    } catch (err) {
+      console.warn('Firestore likeMemory fallback:', err);
     }
 
     const found = localMemories.find((m) => m.id === id);

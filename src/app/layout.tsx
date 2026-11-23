@@ -87,7 +87,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen flex flex-col" style={{ backgroundColor: '#F5F1E8', color: '#241F1A' }} suppressHydrationWarning>
-        <Suspense fallback={<div className="h-20" style={{ backgroundColor: '#4f0809' }} />}>
+        <Suspense fallback={null}>
           <Navbar />
         </Suspense>
         <main className="flex-1 flex flex-col">{children}</main>

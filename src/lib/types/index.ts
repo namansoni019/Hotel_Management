@@ -1,7 +1,5 @@
 /**
- * Application-level TypeScript types.
- * These complement the auto-generated Supabase types with
- * app-specific interfaces used across components.
+ * Application-level TypeScript types used across components.
  */
 
 import type {

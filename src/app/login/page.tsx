@@ -3,7 +3,7 @@
 import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { signInWithEmail, signInWithGoogle } from '@/lib/firebase/auth';
 import { AuthLogo } from '@/components/auth/auth-logo';
 import { AuthCornerArt } from '@/components/auth/auth-corner-art';
 import { ForgotPasswordModal } from '@/components/auth/forgot-password-modal';
@@ -63,52 +63,31 @@ function LoginForm() {
 
     setLoading(true);
     try {
-      const supabase = createClient();
       const rawInput = identifier.trim();
-      const isEmail = rawInput.includes('@');
-
-      if (isEmail) {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: rawInput,
-          password,
-        });
-
-        if (error) {
-          if (error.message.toLowerCase().includes('invalid login credentials')) {
-            setServerError('Invalid email or password. Please verify your details.');
-          } else if (error.message.toLowerCase().includes('email not confirmed')) {
-            setServerError('Your email address has not been confirmed yet. Please check your inbox for the verification email.');
-          } else {
-            setServerError(error.message || 'Authentication failed. Please try again.');
-          }
-        } else {
-          router.refresh();
-          router.push(redirectTarget);
-        }
-      } else {
-        const digits = rawInput.replace(/\D/g, '');
-        const formattedPhone = digits.length === 10 ? `+91${digits}` : rawInput.startsWith('+') ? rawInput : `+${digits}`;
-
-        const { error } = await supabase.auth.signInWithPassword({
-          phone: formattedPhone,
-          password,
-        });
-
-        if (error) {
-          if (error.message.toLowerCase().includes('unsupported') || error.message.toLowerCase().includes('not enabled')) {
-            setServerError('Phone sign-in is not enabled on this server. Please sign in with your email address.');
-          } else if (error.message.toLowerCase().includes('invalid login credentials')) {
-            setServerError('Invalid mobile number or password. Please try again or use your registered email address.');
-          } else {
-            setServerError(error.message || 'Unable to sign in with this mobile number. Please try your email address.');
-          }
-        } else {
-          router.refresh();
-          router.push(redirectTarget);
-        }
+      if (!rawInput.includes('@')) {
+        setServerError('Please sign in using your registered email address.');
+        setLoading(false);
+        return;
       }
-    } catch {
-      setServerError('A network connectivity error occurred. Please try again.');
+
+      await signInWithEmail(rawInput, password);
+      router.refresh();
+      router.push(redirectTarget);
+    } catch (err: unknown) {
+      const errorObj = err as { code?: string; message?: string };
+      const code = errorObj?.code || '';
+      if (
+        code.includes('user-not-found') ||
+        code.includes('wrong-password') ||
+        code.includes('invalid-credential') ||
+        code.includes('invalid-login-credentials')
+      ) {
+        setServerError('Invalid email or password. Please verify your details.');
+      } else if (code.includes('too-many-requests')) {
+        setServerError('Too many failed attempts. Please try again in a few minutes or reset your password.');
+      } else {
+        setServerError(errorObj?.message || 'Authentication failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -120,25 +99,19 @@ function LoginForm() {
     setGoogleLoading(true);
 
     try {
-      const supabase = createClient();
-      const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(redirectTarget)}`,
-        },
-      });
-
-      if (error) {
-        if (error.message.toLowerCase().includes('not enabled') || error.message.toLowerCase().includes('unsupported')) {
-          setGoogleError('Google Sign-In is not enabled on this Supabase project. Please sign in with your email & password.');
-        } else {
-          setGoogleError(error.message || 'Unable to initialize Google Sign-In.');
-        }
+      await signInWithGoogle();
+      router.refresh();
+      router.push(redirectTarget);
+    } catch (err: unknown) {
+      const errorObj = err as { code?: string; message?: string };
+      const code = errorObj?.code || '';
+      if (code.includes('popup-closed-by-user')) {
+        // User closed popup without signing in
+      } else if (code.includes('unauthorized-domain')) {
+        setGoogleError('Google Sign-In is initializing. Ensure localhost is listed in Authorized Domains in Firebase Authentication Settings.');
+      } else {
+        setGoogleError(errorObj?.message || 'Unable to sign in with Google. Please try again.');
       }
-    } catch {
-      setGoogleError('Google Sign-In failed to connect. Please sign in using your credentials.');
     } finally {
       setGoogleLoading(false);
     }

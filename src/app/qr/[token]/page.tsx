@@ -68,14 +68,10 @@ function QRTableOrderContent() {
       fetch(`/api/menu?outletId=${resolved.outlet.id}`)
         .then((r) => r.json())
         .then((data) => {
-          if (data.success && data.categories?.length) {
-            setCategories(data.categories);
-          } else {
-            setCategories(dataRepository.getMenuCategories(resolved.outlet.id));
-          }
+          setCategories(data.categories || []);
         })
         .catch(() => {
-          setCategories(dataRepository.getMenuCategories(resolved.outlet.id));
+          setCategories([]);
         });
     } else {
       setErrorMsg('Invalid or expired QR code table session. Please consult staff.');

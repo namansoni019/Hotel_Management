@@ -17,6 +17,8 @@ import {
   Edit2,
   Trash2,
 } from 'lucide-react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { dataRepository } from '@/lib/data/repository';
 import type { InventoryItem, StockMovement } from '@/lib/types';
 
@@ -44,14 +46,34 @@ export default function InventoryStockPage() {
   const [newItemCost, setNewItemCost] = useState('500');
   const [newItemSupplier, setNewItemSupplier] = useState('Jaipur Royal Mandi');
 
+  useEffect(() => {
+    // Clear legacy localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('dashboard_inventory');
+      } catch {}
+    }
+
+    setInventory(dataRepository.getInventory());
+    setMovements(dataRepository.getStockMovements());
+
+    const unsub = onSnapshot(
+      collection(db, 'inventory'),
+      (snap) => {
+        if (!snap.empty) {
+          setInventory(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as InventoryItem[]);
+        }
+      },
+      () => {}
+    );
+
+    return () => unsub();
+  }, []);
+
   const loadData = () => {
     setInventory(dataRepository.getInventory());
     setMovements(dataRepository.getStockMovements());
   };
-
-  useEffect(() => {
-    loadData();
-  }, []);
 
   // Filtered Items
   const filteredItems = useMemo(() => {

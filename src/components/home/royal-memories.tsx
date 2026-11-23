@@ -114,7 +114,7 @@ export function RoyalMemories() {
   const [zoomMemory, setZoomMemory] = useState<RoyalMemory | null>(null);
   const [isSubmittingMemory, setIsSubmittingMemory] = useState(false);
 
-  // Fetch live memories from Supabase API
+  // Fetch live memories from Firestore API
   React.useEffect(() => {
     async function loadLiveMemories() {
       try {
@@ -175,7 +175,7 @@ export function RoyalMemories() {
       })
     );
 
-    // Sync live with Supabase
+    // Sync live with Firestore
     try {
       await fetch(`/api/memories/${id}/like`, { method: 'POST' });
     } catch (err) {

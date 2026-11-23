@@ -1,5 +1,27 @@
 import { NextResponse } from 'next/server';
+import path from 'path';
+import sharp from 'sharp';
 import { menuService } from '@/lib/services/menu-service';
+
+export const dynamic = 'force-dynamic';
+
+async function sanitizeImageUrl(url?: string): Promise<string> {
+  if (!url) return '/images/dining_ambiance.jpg';
+  if (url.startsWith('data:')) return url;
+  if (url.startsWith('/uploads/')) {
+    try {
+      const filePath = path.join(process.cwd(), 'public', url.replace(/^\//, ''));
+      const buf = await sharp(filePath)
+        .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 80 })
+        .toBuffer();
+      return `data:image/webp;base64,${buf.toString('base64')}`;
+    } catch {
+      return url;
+    }
+  }
+  return url;
+}
 
 export async function GET(request: Request) {
   try {
@@ -24,13 +46,15 @@ export async function POST(request: Request) {
       );
     }
 
+    const finalImageUrl = await sanitizeImageUrl(image_url);
+
     const item = await menuService.addMenuItem({
       category_id,
       name,
       description: description || '',
       price_minor: Number(price_minor),
       dietary_labels: dietary_labels || ['Vegetarian'],
-      image_url: image_url || '/images/dining_ambiance.jpg',
+      image_url: finalImageUrl,
     });
 
     return NextResponse.json({ success: true, item }, { status: 201 });

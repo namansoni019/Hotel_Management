@@ -1,44 +1,125 @@
-import { getSupabaseClient } from './supabase-helper';
+import {
+  collection,
+  doc,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { dataRepository } from '@/lib/data/repository';
 import type { MenuCategory, MenuItem } from '@/lib/types';
 
 export const menuService = {
   async getMenuCategories(outletId?: string): Promise<MenuCategory[]> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      let query = supabase
-        .from('menu_categories')
-        .select('*, menu_items(*, modifiers(*))')
-        .order('sort_order', { ascending: true });
+    try {
+      // 1. Fetch all items from Firestore 'menu_items'
+      const itemRef = collection(db, 'menu_items');
+      const itemSnapshot = await getDocs(itemRef);
+      const allItems = itemSnapshot.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      })) as MenuItem[];
+
+      // 2. Fetch categories from Firestore 'menu_categories'
+      const catRef = collection(db, 'menu_categories');
+      const catSnapshot = await getDocs(catRef);
+      const dbCategories = catSnapshot.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+      })) as Array<Partial<MenuCategory> & { id: string }>;
+
+      // If no items in DB and no categories in DB, return empty array
+      if (allItems.length === 0 && dbCategories.length === 0) {
+        return [];
+      }
+
+      // Map to hold categories by id
+      const categoryMap = new Map<string, MenuCategory>();
+
+      // Register categories from Firestore dbCategories
+      for (const cat of dbCategories) {
+        categoryMap.set(cat.id, {
+          id: cat.id,
+          outlet_id: cat.outlet_id || 'e0000000-0000-0000-0000-000000000001',
+          name: cat.name || 'Specialties',
+          sort_order: cat.sort_order ?? 99,
+          is_available: cat.is_available ?? true,
+          items: [],
+        });
+      }
+
+      // Place each item into its category. If category not in categoryMap, auto-generate it!
+      for (const item of allItems) {
+        const catId = item.category_id || 'cat-general';
+        if (!categoryMap.has(catId)) {
+          let name = 'Palace Specialties';
+          let catOutletId = 'e0000000-0000-0000-0000-000000000001'; // restaurant default
+
+          const lowerCat = catId.toLowerCase();
+          const lowerName = (item.name || '').toLowerCase();
+          const isCafe = lowerCat.includes('cafe') || /coffee|tea|chai|brew|cafe|bakery|cake|pastry|noodle|snack/i.test(lowerName);
+
+          if (isCafe) {
+            catOutletId = 'e0000000-0000-0000-0000-000000000002'; // cafe
+          }
+
+          if (catId === 'cat-cafe-1' || lowerCat.includes('cafe-1')) {
+            name = 'Artisanal Brews & Delicacies';
+          } else if (catId === 'cat-cafe-2' || lowerCat.includes('cafe-2')) {
+            name = 'Palace Bakery & Quick Bites';
+          } else if (catId === 'cat-1' || lowerCat.includes('starter')) {
+            name = 'Royal Starters & Tandoor';
+          } else if (catId === 'cat-2' || lowerCat.includes('thali')) {
+            name = 'Royal Thalis & Feasts';
+          } else if (catId === 'cat-3' || lowerCat.includes('main')) {
+            name = 'Mewari Royal Mains';
+          } else if (catId === 'cat-4' || lowerCat.includes('bread') || lowerCat.includes('dessert')) {
+            name = 'Royal Breads & Desserts';
+          } else {
+            name = catId
+              .replace(/^cat-/, '')
+              .replace(/^cat_/, '')
+              .split(/[-_]/)
+              .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+              .join(' ');
+          }
+
+          categoryMap.set(catId, {
+            id: catId,
+            outlet_id: catOutletId,
+            name,
+            sort_order: 99,
+            is_available: true,
+            items: [],
+          });
+        }
+
+        categoryMap.get(catId)!.items!.push(item);
+      }
+
+      let result = Array.from(categoryMap.values());
 
       if (outletId) {
-        query = query.eq('outlet_id', outletId);
+        result = result.filter((c) => {
+          if (outletId.includes('2') || outletId === 'cafe') {
+            return c.outlet_id === outletId || c.outlet_id?.includes('2') || c.id.includes('cafe');
+          }
+          return c.outlet_id === outletId || (!c.outlet_id?.includes('2') && !c.id.includes('cafe'));
+        });
       }
 
-      const { data, error } = await query;
-      if (!error && data) {
-        return data.map((c: any) => ({
-          id: c.id,
-          outlet_id: c.outlet_id,
-          name: c.name,
-          sort_order: c.sort_order,
-          is_available: c.is_available,
-          items: (c.menu_items || []).map((item: any) => ({
-            id: item.id,
-            category_id: item.category_id,
-            name: item.name,
-            description: item.description,
-            price_minor: item.price_minor,
-            image_url: item.image_url,
-            is_available: item.is_available,
-            dietary_labels: item.dietary_labels || [],
-            sort_order: item.sort_order,
-            modifiers: item.modifiers || [],
-          })),
+      return result
+        .sort((a, b) => (a.sort_order ?? 99) - (b.sort_order ?? 99))
+        .map((c) => ({
+          ...c,
+          items: (c.items || []).sort((a, b) => (a.sort_order ?? 99) - (b.sort_order ?? 99)),
         }));
-      }
+    } catch (err) {
+      console.warn('Firestore menu read error:', err);
+      return [];
     }
-    return dataRepository.getMenuCategories(outletId);
   },
 
   async addMenuItem(itemData: {
@@ -49,118 +130,99 @@ export const menuService = {
     dietary_labels: string[];
     image_url?: string;
   }): Promise<MenuItem> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('menu_items')
-        .insert({
-          category_id: itemData.category_id,
-          name: itemData.name,
-          description: itemData.description,
-          price_minor: itemData.price_minor,
-          dietary_labels: itemData.dietary_labels,
-          image_url: itemData.image_url || '/images/dining_ambiance.jpg',
-          is_available: true,
-          sort_order: 99,
-        })
-        .select('*')
-        .single();
-      if (!error && data) return data as MenuItem;
+    try {
+      const itemRef = collection(db, 'menu_items');
+      const docRef = await addDoc(itemRef, {
+        category_id: itemData.category_id,
+        name: itemData.name,
+        description: itemData.description,
+        price_minor: itemData.price_minor,
+        dietary_labels: itemData.dietary_labels,
+        image_url: itemData.image_url || '/images/dining_ambiance.jpg',
+        is_available: true,
+        sort_order: 99,
+        created_at: serverTimestamp(),
+      });
+
+      const localItem = dataRepository.addMenuItem(itemData);
+      return {
+        ...localItem,
+        id: docRef.id,
+      };
+    } catch (err) {
+      console.warn('Firestore addMenuItem fallback to local repository:', err);
+      return dataRepository.addMenuItem(itemData);
     }
-    return dataRepository.addMenuItem(itemData);
   },
 
   async updateMenuItem(
     itemId: string,
-    updates: Partial<Pick<MenuItem, 'name' | 'description' | 'price_minor' | 'dietary_labels' | 'is_available'>>
+    updates: Partial<Pick<MenuItem, 'name' | 'description' | 'price_minor' | 'dietary_labels' | 'is_available' | 'image_url' | 'category_id'>>
   ): Promise<MenuItem | null> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('menu_items')
-        .update(updates)
-        .eq('id', itemId)
-        .select('*')
-        .single();
-      if (!error && data) return data as MenuItem;
+    try {
+      const itemRef = doc(db, 'menu_items', itemId);
+      await updateDoc(itemRef, {
+        ...updates,
+        updated_at: serverTimestamp(),
+      });
+    } catch (err) {
+      console.warn('Firestore updateMenuItem fallback:', err);
     }
     return dataRepository.updateMenuItem(itemId, updates);
   },
 
   async toggleItemAvailability(itemId: string): Promise<boolean> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data: item } = await supabase
-        .from('menu_items')
-        .select('is_available')
-        .eq('id', itemId)
-        .single();
-
-      if (item) {
-        const nextState = !item.is_available;
-        await supabase
-          .from('menu_items')
-          .update({ is_available: nextState })
-          .eq('id', itemId);
-        return nextState;
-      }
+    try {
+      const nextState = dataRepository.toggleItemAvailability(itemId);
+      const itemRef = doc(db, 'menu_items', itemId);
+      await updateDoc(itemRef, {
+        is_available: nextState,
+        updated_at: serverTimestamp(),
+      });
+      return nextState;
+    } catch {
+      return dataRepository.toggleItemAvailability(itemId);
     }
-    return dataRepository.toggleItemAvailability(itemId);
   },
 
   async deleteMenuItem(itemId: string): Promise<boolean> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      try {
-        await supabase.from('menu_items').delete().eq('id', itemId);
-      } catch {
-        // Ignored
-      }
+    try {
+      const itemRef = doc(db, 'menu_items', itemId);
+      await deleteDoc(itemRef);
+    } catch {
+      // Ignored
     }
     return dataRepository.deleteMenuItem(itemId);
   },
 
   async addCategory(data: { name: string; outlet_id?: string; image_url?: string }): Promise<MenuCategory> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      try {
-        const { data: dbCat } = await supabase
-          .from('menu_categories')
-          .insert({
-            name: data.name,
-            outlet_id: data.outlet_id || 'e0000000-0000-0000-0000-000000000001',
-            sort_order: 99,
-            is_available: true,
-          })
-          .select('*')
-          .maybeSingle();
+    try {
+      const catRef = collection(db, 'menu_categories');
+      const docRef = await addDoc(catRef, {
+        name: data.name,
+        outlet_id: data.outlet_id || 'e0000000-0000-0000-0000-000000000001',
+        sort_order: 99,
+        is_available: true,
+        created_at: serverTimestamp(),
+      });
 
-        if (dbCat) {
-          return {
-            id: dbCat.id,
-            outlet_id: dbCat.outlet_id,
-            name: dbCat.name,
-            sort_order: dbCat.sort_order,
-            is_available: dbCat.is_available,
-            items: [],
-          };
-        }
-      } catch {
-        // Fallback
-      }
+      const localCat = dataRepository.addCategory(data);
+      return {
+        ...localCat,
+        id: docRef.id,
+      };
+    } catch (err) {
+      console.warn('Firestore addCategory fallback:', err);
+      return dataRepository.addCategory(data);
     }
-    return dataRepository.addCategory(data);
   },
 
   async deleteCategory(catId: string): Promise<boolean> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      try {
-        await supabase.from('menu_items').delete().eq('category_id', catId);
-        await supabase.from('menu_categories').delete().eq('id', catId);
-      } catch {
-        // Ignored
-      }
+    try {
+      const catRef = doc(db, 'menu_categories', catId);
+      await deleteDoc(catRef);
+    } catch {
+      // Ignored
     }
     return dataRepository.deleteCategory(catId);
   },

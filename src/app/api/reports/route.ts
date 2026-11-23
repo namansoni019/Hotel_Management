@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server';
 import { ordersService } from '@/lib/services/orders-service';
 import { reservationsService } from '@/lib/services/reservations-service';
 import { dataRepository } from '@/lib/data/repository';
-import { getSupabaseClient } from '@/lib/services/supabase-helper';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
@@ -20,14 +23,11 @@ export async function GET(request: Request) {
 
     // Total rooms count
     let totalRoomsCount = dataRepository.getRooms().length;
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      try {
-        const { count } = await supabase.from('rooms').select('*', { count: 'exact', head: true });
-        if (count && count > 0) totalRoomsCount = count;
-      } catch {
-        // Fallback
-      }
+    try {
+      const roomSnap = await getDocs(collection(db, 'rooms'));
+      if (!roomSnap.empty) totalRoomsCount = roomSnap.size;
+    } catch {
+      // Fallback
     }
     if (totalRoomsCount === 0) totalRoomsCount = 6;
 

@@ -30,6 +30,8 @@ import {
   RefreshCw,
   Info,
 } from 'lucide-react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { dataRepository } from '@/lib/data/repository';
 import type { Outlet, Table, Order } from '@/lib/types';
 
@@ -140,7 +142,29 @@ export default function PalaceOutletsPage() {
   };
 
   useEffect(() => {
+    // Clear legacy localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('dashboard_outlets');
+      } catch {}
+    }
+
     loadData();
+
+    const unsubOutlets = onSnapshot(
+      collection(db, 'outlets'),
+      (snap) => {
+        if (!snap.empty) {
+          const outs = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Outlet[];
+          setOutlets(outs);
+          if (!activeHoursTab && outs.length > 0) {
+            setActiveHoursTab(outs[0].id);
+          }
+        }
+      },
+      () => {}
+    );
+
     const handleOutsideClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (!target.closest('.outlet-status-dropdown-container')) {
@@ -151,7 +175,10 @@ export default function PalaceOutletsPage() {
       }
     };
     document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
+    return () => {
+      unsubOutlets();
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
   }, []);
 
   // Show auto-dismiss notification

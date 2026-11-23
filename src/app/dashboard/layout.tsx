@@ -36,7 +36,7 @@ import {
   ArrowLeft,
   Image as ImageIcon,
 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+import { subscribeToAuth, signOutUser, getUserProfile, checkAdminInDb } from '@/lib/firebase/auth';
 
 function PalaceGatewayLogo() {
   return (
@@ -79,21 +79,47 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const notifRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
 
-  // Verify staff access
+  // Remove any legacy saved localStorage content for admin dashboard
   useEffect(() => {
-    const verifyAccess = async () => {
+    if (typeof window !== 'undefined') {
       try {
-        const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
+        const keysToRemove = [
+          'admin_dashboard_data',
+          'dashboard_orders',
+          'dashboard_bookings',
+          'dashboard_rooms',
+          'dashboard_tables',
+          'hotel_orders',
+          'hotel_reservations',
+          'hotel_staff',
+          'hotel_menu',
+          'hotel_inventory',
+        ];
+        keysToRemove.forEach((k) => window.localStorage.removeItem(k));
+      } catch {
+        // Ignored
+      }
+    }
+  }, []);
 
-        if (!user) {
+  // Verify staff access and fetch admin from DB
+  useEffect(() => {
+    const unsubscribe = subscribeToAuth(async (currentUser) => {
+      try {
+        if (!currentUser) {
           router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
           return;
         }
 
-        const email = user.email || '';
-        const metaRole = (user.user_metadata?.role || '').toLowerCase();
-        const isStaffMeta = Boolean(user.user_metadata?.is_staff);
+        const email = (currentUser.email || '').toLowerCase();
+        const profile = await getUserProfile(currentUser.uid);
+        const metaRole = (profile?.role || '').toLowerCase();
+        const isStaffMeta = Boolean(profile?.is_staff);
+        const isOwner = email === 'soninamanp7@gmail.com';
+
+        // Fetch admin status directly from Admins doc in the database
+        const adminCheck = await checkAdminInDb({ uid: currentUser.uid, email });
+
         const staffRoles = [
           'admin',
           'administrator',
@@ -106,12 +132,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           'staff',
         ];
 
-        const res = await fetch(`/api/staff/check?email=${encodeURIComponent(email)}`);
-        const json = await res.json();
+        let isStaff = adminCheck.isAdmin || isOwner || isStaffMeta || staffRoles.includes(metaRole);
+        let resolvedRole = adminCheck.isAdmin || isOwner ? 'admin' : (metaRole || 'staff');
+        let resolvedName =
+          profile?.name ||
+          adminCheck.adminData?.name ||
+          currentUser.displayName ||
+          (isOwner ? 'Naman Soni (Owner)' : email.split('@')[0]) ||
+          'Staff Member';
 
-        if (json.isStaff || isStaffMeta || staffRoles.includes(metaRole)) {
-          const resolvedName = json.name || user.user_metadata?.full_name || email.split('@')[0] || 'Staff Member';
-          const resolvedRole = json.role || metaRole || 'staff';
+        if (!isStaff) {
+          try {
+            const res = await fetch(`/api/staff/check?email=${encodeURIComponent(email)}`);
+            const json = await res.json();
+            if (json.isStaff) {
+              isStaff = true;
+              resolvedName = json.name || resolvedName;
+              resolvedRole = json.role || resolvedRole;
+            }
+          } catch {
+            // Fallback
+          }
+        }
+
+        if (isStaff) {
           setStaffInfo({
             name: resolvedName,
             role: resolvedRole,
@@ -124,12 +168,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           setCheckingAuth(false);
         }
       } catch {
-        // Fallback
         setCheckingAuth(false);
       }
-    };
+    });
 
-    verifyAccess();
+    return () => {
+      unsubscribe();
+    };
   }, [pathname, router]);
 
   // Close dropdowns on outside click
@@ -195,8 +240,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </Link>
             <button
               onClick={async () => {
-                const supabase = createClient();
-                await supabase.auth.signOut();
+                await signOutUser();
                 router.replace('/login?redirect=/dashboard');
               }}
               className="px-4 py-2.5 rounded-xl bg-[#4F0809] hover:bg-[#680b0c] text-white transition cursor-pointer"
@@ -736,8 +780,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     <button
                       type="button"
                       onClick={async () => {
-                        const supabase = createClient();
-                        await supabase.auth.signOut();
+                        await signOutUser();
                         router.refresh();
                         router.push('/login');
                       }}

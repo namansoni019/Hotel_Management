@@ -30,6 +30,9 @@ import {
   Trash2,
   ZoomIn,
 } from 'lucide-react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { reservationsService } from '@/lib/services/reservations-service';
 import { dataRepository } from '@/lib/data/repository';
 import type { Reservation, RoomType, Room, GuestAadhaarDetail } from '@/lib/types';
 
@@ -104,23 +107,56 @@ export default function RoomBookingsPage() {
     { fullName: '', aadhaarNumber: '', aadhaarImage: '' },
   ]);
 
-  const loadData = () => {
-    const res = dataRepository.getReservations();
-    const rt = dataRepository.getRoomTypes();
-    const rms = dataRepository.getRooms();
-    setReservations(res);
-    setRoomTypes(rt);
-    setRooms(rms);
+  useEffect(() => {
+    // Clear legacy localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('dashboard_bookings');
+      } catch {}
+    }
+
+    setRoomTypes(dataRepository.getRoomTypes());
+    setRooms(dataRepository.getRooms());
     setFormCheckIn(new Date().toISOString().split('T')[0]);
     setFormCheckOut(new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0]);
-    if (rt.length > 0 && !formRoomTypeId) {
-      setFormRoomTypeId(rt[0].id);
+    const rts = dataRepository.getRoomTypes();
+    if (rts.length > 0 && !formRoomTypeId) {
+      setFormRoomTypeId(rts[0].id);
     }
-  };
 
-  useEffect(() => {
-    loadData();
+    const unsubRes = onSnapshot(
+      collection(db, 'reservations'),
+      (snap) => {
+        if (!snap.empty) {
+          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Reservation[];
+          list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+          setReservations(list);
+        } else {
+          setReservations(dataRepository.getReservations());
+        }
+      },
+      () => setReservations(dataRepository.getReservations())
+    );
+
+    const unsubRooms = onSnapshot(
+      collection(db, 'rooms'),
+      (snap) => {
+        if (!snap.empty) {
+          setRooms(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Room[]);
+        }
+      },
+      () => {}
+    );
+
+    return () => {
+      unsubRes();
+      unsubRooms();
+    };
   }, []);
+
+  const loadData = () => {
+    // Maintained for manual refresh trigger
+  };
 
   // Filtered reservations
   const filteredReservations = useMemo(() => {
@@ -144,9 +180,12 @@ export default function RoomBookingsPage() {
   const pendingCount = reservations.filter((r) => r.status === 'pending').length;
 
   // Actions
-  const handleUpdateStatus = (id: string, newStatus: Reservation['status']) => {
-    dataRepository.updateReservationStatus(id, newStatus);
-    loadData();
+  const handleUpdateStatus = async (id: string, newStatus: Reservation['status']) => {
+    try {
+      await reservationsService.updateReservationStatus(id, newStatus);
+    } catch {
+      dataRepository.updateReservationStatus(id, newStatus);
+    }
     if (selectedBooking && selectedBooking.id === id) {
       setSelectedBooking({ ...selectedBooking, status: newStatus });
     }
@@ -255,7 +294,7 @@ export default function RoomBookingsPage() {
     });
   };
 
-  const handleCreateBooking = (e: React.FormEvent) => {
+  const handleCreateBooking = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
 
@@ -293,18 +332,33 @@ export default function RoomBookingsPage() {
       is_verified: true,
     }));
 
-    dataRepository.createReservation({
-      guestName: formGuestName.trim(),
-      phone: formPhone.trim(),
-      email: formEmail.trim(),
-      roomTypeId: formRoomTypeId,
-      roomId: formRoomId || undefined,
-      checkIn: formCheckIn,
-      checkOut: formCheckOut,
-      partySize: partyCount,
-      notes: formNotes.trim(),
-      aadhaarDetails: aadhaarDetailsPayload,
-    });
+    try {
+      await reservationsService.createReservation({
+        guestName: formGuestName.trim(),
+        guestPhone: formPhone.trim(),
+        guestEmail: formEmail.trim(),
+        roomTypeId: formRoomTypeId,
+        roomId: formRoomId || undefined,
+        checkIn: formCheckIn,
+        checkOut: formCheckOut,
+        partySize: partyCount,
+        notes: formNotes.trim(),
+        aadhaarDetails: aadhaarDetailsPayload,
+      });
+    } catch {
+      dataRepository.createReservation({
+        guestName: formGuestName.trim(),
+        phone: formPhone.trim(),
+        email: formEmail.trim(),
+        roomTypeId: formRoomTypeId,
+        roomId: formRoomId || undefined,
+        checkIn: formCheckIn,
+        checkOut: formCheckOut,
+        partySize: partyCount,
+        notes: formNotes.trim(),
+        aadhaarDetails: aadhaarDetailsPayload,
+      });
+    }
 
     setIsNewModalOpen(false);
     setFormGuestName('');

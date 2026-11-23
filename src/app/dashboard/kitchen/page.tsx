@@ -22,6 +22,9 @@ import {
   Coffee,
   Sparkles,
 } from 'lucide-react';
+import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { ordersService } from '@/lib/services/orders-service';
 import { dataRepository } from '@/lib/data/repository';
 import type { Order, Outlet } from '@/lib/types';
 
@@ -71,29 +74,49 @@ export default function KitchenOrderBoardPage() {
     }
   }, []);
 
-  const loadData = useCallback(async () => {
-    try {
-      const res = await fetch('/api/orders');
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.orders) && data.orders.length > 0) {
-          setOrders(data.orders);
-          setOutlets(dataRepository.getOutlets());
-          return;
-        }
-      }
-    } catch {
-      // Fallback to dataRepository if offline or server route fails
-    }
-    setOrders(dataRepository.getOrders());
-    setOutlets(dataRepository.getOutlets());
-  }, []);
-
   useEffect(() => {
-    loadData();
-    const interval = setInterval(loadData, 5000);
-    return () => clearInterval(interval);
-  }, [loadData]);
+    // Clear any legacy localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('dashboard_kitchen_orders');
+      } catch {}
+    }
+
+    // Real-time Firestore orders listener
+    const unsubOrders = onSnapshot(
+      collection(db, 'orders'),
+      (snap) => {
+        if (!snap.empty) {
+          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Order[];
+          list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+          setOrders(list);
+        } else {
+          setOrders(dataRepository.getOrders());
+        }
+      },
+      (err) => {
+        console.warn('Real-time kitchen orders listener:', err);
+        setOrders(dataRepository.getOrders());
+      }
+    );
+
+    const unsubOutlets = onSnapshot(
+      collection(db, 'outlets'),
+      (snap) => {
+        if (!snap.empty) {
+          setOutlets(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Outlet[]);
+        } else {
+          setOutlets(dataRepository.getOutlets());
+        }
+      },
+      () => setOutlets(dataRepository.getOutlets())
+    );
+
+    return () => {
+      unsubOrders();
+      unsubOutlets();
+    };
+  }, []);
 
   // Audio trigger on newly arrived pending orders
   useEffect(() => {
@@ -105,17 +128,15 @@ export default function KitchenOrderBoardPage() {
   }, [orders, soundEnabled, playKitchenChime]);
 
   const handleUpdateStatus = async (orderId: string, nextStatus: Order['status'], reason?: string) => {
-    dataRepository.updateOrderStatus(orderId, nextStatus, reason);
     try {
-      await fetch(`/api/orders/${orderId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: nextStatus }),
-      });
+      await ordersService.updateOrderStatus(orderId, nextStatus, reason);
     } catch {
-      // Ignored
+      dataRepository.updateOrderStatus(orderId, nextStatus, reason);
     }
-    loadData();
+  };
+
+  const loadData = () => {
+    // Real-time listener handles sync
   };
 
   const getTicketAgeMinutes = (createdAt: string) => {

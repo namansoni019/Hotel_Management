@@ -1,6 +1,19 @@
 import { NextResponse } from 'next/server';
+import {
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { dataRepository } from '@/lib/data/repository';
-import { getSupabaseClient } from '@/lib/services/supabase-helper';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
@@ -11,35 +24,30 @@ export async function GET(request: Request) {
     let reservations = dataRepository.getTableReservations();
     const qrTokens = dataRepository.getQRTokens();
 
-    // If Supabase is connected, optionally sync
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      try {
-        let query = supabase.from('tables').select('*');
-        if (outletId && outletId !== 'all') {
-          query = query.eq('outlet_id', outletId);
-        }
-        const { data: dbTables, error } = await query;
-        if (!error && dbTables && dbTables.length > 0) {
-          // Merge Supabase tables with repository in-memory status
-          const merged = dbTables.map((dbT: any) => {
-            const memory = tables.find((m) => m.id === dbT.id || m.table_number === dbT.table_number);
-            return {
-              id: dbT.id,
-              outlet_id: dbT.outlet_id,
-              table_number: dbT.table_number,
-              capacity: dbT.capacity || 4,
-              is_active: dbT.is_active ?? true,
-              status: memory?.status || 'available',
-              location: memory?.location || 'Dining Area',
-              code: memory?.code || `table-${dbT.table_number.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
-            };
-          });
-          tables = merged;
-        }
-      } catch {
-        // Fallback to in-memory tables
+    try {
+      const tblRef = collection(db, 'tables');
+      const q = outletId && outletId !== 'all' ? query(tblRef, where('outlet_id', '==', outletId)) : tblRef;
+      const snap = await getDocs(q);
+
+      if (!snap.empty) {
+        const dbTables = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as any[];
+        const merged = dbTables.map((dbT: any) => {
+          const memory = tables.find((m) => m.id === dbT.id || m.table_number === dbT.table_number);
+          return {
+            id: dbT.id,
+            outlet_id: dbT.outlet_id,
+            table_number: dbT.table_number,
+            capacity: dbT.capacity || 4,
+            is_active: dbT.is_active ?? true,
+            status: memory?.status || 'available',
+            location: memory?.location || 'Dining Area',
+            code: memory?.code || `table-${(dbT.table_number || '').toLowerCase().replace(/[^a-z0-9]/g, '')}`,
+          };
+        });
+        tables = merged;
       }
+    } catch {
+      // Fallback
     }
 
     if (outletId && outletId !== 'all') {
@@ -115,19 +123,17 @@ export async function POST(request: Request) {
       location: location || 'Dining Area',
     });
 
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      try {
-        await supabase.from('tables').insert({
-          id: createdTable.id,
-          outlet_id: createdTable.outlet_id,
-          table_number: createdTable.table_number,
-          capacity: createdTable.capacity,
-          is_active: createdTable.is_active,
-        });
-      } catch {
-        // Ignored if table schema differs
-      }
+    try {
+      await setDoc(doc(db, 'tables', createdTable.id), {
+        id: createdTable.id,
+        outlet_id: createdTable.outlet_id,
+        table_number: createdTable.table_number,
+        capacity: createdTable.capacity,
+        is_active: createdTable.is_active,
+        created_at: serverTimestamp(),
+      });
+    } catch {
+      // Ignored
     }
 
     return NextResponse.json({ success: true, table: createdTable }, { status: 201 });
@@ -165,21 +171,18 @@ export async function PATCH(request: Request) {
 
     const updatedTable = dataRepository.updateTable(id, patchData);
 
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      try {
-        const dbPatch: any = {};
-        if (capacity !== undefined) dbPatch.capacity = Number(capacity);
-        if (table_number !== undefined) dbPatch.table_number = table_number.trim().toUpperCase();
-        if (outlet_id !== undefined) dbPatch.outlet_id = outlet_id;
-        if (is_active !== undefined) dbPatch.is_active = Boolean(is_active);
+    try {
+      const dbPatch: any = {};
+      if (capacity !== undefined) dbPatch.capacity = Number(capacity);
+      if (table_number !== undefined) dbPatch.table_number = table_number.trim().toUpperCase();
+      if (outlet_id !== undefined) dbPatch.outlet_id = outlet_id;
+      if (is_active !== undefined) dbPatch.is_active = Boolean(is_active);
 
-        if (Object.keys(dbPatch).length > 0) {
-          await supabase.from('tables').update(dbPatch).eq('id', id);
-        }
-      } catch {
-        // Ignored
+      if (Object.keys(dbPatch).length > 0) {
+        await updateDoc(doc(db, 'tables', id), dbPatch);
       }
+    } catch {
+      // Ignored
     }
 
     return NextResponse.json({ success: true, table: updatedTable });
@@ -203,24 +206,19 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ success: deleted });
     }
 
-    // Get the table before deleting to also delete from Supabase by table_number or id
     const currentTable = dataRepository.getTables().find((t) => t.id === id);
     const deleted = dataRepository.deleteTable(id);
 
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      try {
-        await supabase.from('tables').delete().eq('id', id);
-      } catch {
-        // Ignored
-      }
+    try {
+      await deleteDoc(doc(db, 'tables', id));
       if (currentTable) {
-        try {
-          await supabase.from('tables').delete().eq('table_number', currentTable.table_number);
-        } catch {
-          // Ignored
-        }
+        // Also delete by table_number if ID differed
+        const q = query(collection(db, 'tables'), where('table_number', '==', currentTable.table_number));
+        const snap = await getDocs(q);
+        await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
       }
+    } catch {
+      // Ignored
     }
 
     return NextResponse.json({ success: true, deletedId: id });

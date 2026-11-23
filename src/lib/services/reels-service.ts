@@ -1,4 +1,16 @@
-import { getSupabaseClient } from './supabase-helper';
+import {
+  collection,
+  doc,
+  getDocs,
+  getDoc,
+  setDoc,
+  updateDoc,
+  query,
+  where,
+  orderBy,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 export interface ReelRecord {
   id: string;
@@ -83,14 +95,18 @@ let localReels = [...LOCAL_FALLBACK_REELS];
 
 export const reelsService = {
   async getReels(): Promise<ReelRecord[]> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('reels')
-        .select('*')
-        .eq('is_approved', true)
-        .order('created_at', { ascending: false });
-      if (!error && data) return data as ReelRecord[];
+    try {
+      const colRef = collection(db, 'reels');
+      const q = query(colRef, where('is_approved', '==', true), orderBy('created_at', 'desc'));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        return snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as ReelRecord[];
+      }
+    } catch (err) {
+      console.warn('Firestore getReels fallback:', err);
     }
     return localReels;
   },
@@ -103,24 +119,6 @@ export const reelsService = {
     video_url?: string;
     spot_tag?: string;
   }): Promise<ReelRecord> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data: newReel, error } = await supabase
-        .from('reels')
-        .insert({
-          creator_name: data.creator_name,
-          handle: data.handle.startsWith('@') ? data.handle : `@${data.handle}`,
-          title: data.title,
-          thumbnail_url: data.thumbnail_url || '/images/hero_haveli.jpg',
-          video_url: data.video_url || null,
-          spot_tag: data.spot_tag || 'Royal Courtyard',
-          is_approved: true,
-        })
-        .select('*')
-        .single();
-      if (!error && newReel) return newReel as ReelRecord;
-    }
-
     const created: ReelRecord = {
       id: `reel-${Date.now()}`,
       creator_name: data.creator_name,
@@ -136,26 +134,32 @@ export const reelsService = {
       is_approved: true,
       created_at: new Date().toISOString(),
     };
+
+    try {
+      const docRef = doc(db, 'reels', created.id);
+      await setDoc(docRef, {
+        ...created,
+        created_at: serverTimestamp(),
+      });
+    } catch (err) {
+      console.warn('Firestore createReel fallback:', err);
+    }
+
     localReels = [created, ...localReels];
     return created;
   },
 
   async likeReel(id: string): Promise<number | null> {
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data: reel } = await supabase
-        .from('reels')
-        .select('likes_count')
-        .eq('id', id)
-        .single();
-      if (reel) {
-        const nextLikes = reel.likes_count + 1;
-        await supabase
-          .from('reels')
-          .update({ likes_count: nextLikes })
-          .eq('id', id);
+    try {
+      const docRef = doc(db, 'reels', id);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const nextLikes = (snap.data().likes_count || 0) + 1;
+        await updateDoc(docRef, { likes_count: nextLikes });
         return nextLikes;
       }
+    } catch (err) {
+      console.warn('Firestore likeReel fallback:', err);
     }
 
     const found = localReels.find((r) => r.id === id);

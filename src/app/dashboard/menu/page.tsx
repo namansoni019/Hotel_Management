@@ -961,11 +961,22 @@ export default function MenuBuilderPage() {
                     <option value="" disabled>
                       Select Category
                     </option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
+                    {categories.length > 0 ? (
+                      categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} {c.outlet_id?.includes('2') || c.id.includes('cafe') ? '(Café)' : '(Restaurant)'}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="cat-1">Royal Starters &amp; Tandoor (Restaurant)</option>
+                        <option value="cat-2">Royal Thalis &amp; Feasts (Restaurant)</option>
+                        <option value="cat-3">Mewari Royal Mains (Restaurant)</option>
+                        <option value="cat-4">Royal Breads &amp; Desserts (Restaurant)</option>
+                        <option value="cat-cafe-1">Artisanal Brews &amp; Bites (Café)</option>
+                        <option value="cat-cafe-2">Palace Bakery &amp; Desserts (Café)</option>
+                      </>
+                    )}
                   </select>
                 </div>
 

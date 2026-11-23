@@ -23,8 +23,10 @@ import {
   X,
   FileSpreadsheet,
 } from 'lucide-react';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { dataRepository } from '@/lib/data/repository';
-import type { Order, Reservation, TableReservation } from '@/lib/types';
+import type { Order, Reservation, TableReservation, Room, InventoryItem } from '@/lib/types';
 
 export default function AdminDashboardPage() {
   const [activeTab, setActiveTab] = useState<'orders' | 'bookings' | 'reservations'>('orders');
@@ -36,12 +38,108 @@ export default function AdminDashboardPage() {
   const [selectedTableRes, setSelectedTableRes] = useState<TableReservation | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Retrieve shared live data
-  const orders = useMemo(() => dataRepository.getOrders(), [refreshKey]);
-  const bookings = useMemo(() => dataRepository.getReservations(), [refreshKey]);
-  const tableReservations = useMemo(() => dataRepository.getTableReservations(), [refreshKey]);
-  const rooms = useMemo(() => dataRepository.getRooms(), [refreshKey]);
-  const inventory = useMemo(() => dataRepository.getInventory(), [refreshKey]);
+  // Real-time Firestore state
+  const [orders, setOrders] = useState<Order[]>(() => dataRepository.getOrders());
+  const [bookings, setBookings] = useState<Reservation[]>(() => dataRepository.getReservations());
+  const [tableReservations, setTableReservations] = useState<TableReservation[]>(() => dataRepository.getTableReservations());
+  const [rooms, setRooms] = useState<Room[]>(() => dataRepository.getRooms());
+  const [inventory, setInventory] = useState<InventoryItem[]>(() => dataRepository.getInventory());
+  const [isLiveConnected, setIsLiveConnected] = useState(false);
+
+  // Real-time Firestore subscriptions for live dashboard content
+  React.useEffect(() => {
+    // Remove any legacy saved localStorage content for admin dashboard
+    if (typeof window !== 'undefined') {
+      try {
+        const keys = [
+          'admin_dashboard_data',
+          'dashboard_orders',
+          'dashboard_bookings',
+          'dashboard_rooms',
+          'dashboard_tables',
+          'hotel_orders',
+          'hotel_reservations',
+          'hotel_staff',
+          'hotel_menu',
+          'hotel_inventory',
+        ];
+        keys.forEach((k) => window.localStorage.removeItem(k));
+      } catch {
+        // Ignored
+      }
+    }
+
+    // 1. Real-time orders listener
+    const unsubOrders = onSnapshot(
+      collection(db, 'orders'),
+      (snap) => {
+        if (!snap.empty) {
+          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Order[];
+          list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+          setOrders(list);
+        }
+        setIsLiveConnected(true);
+      },
+      (err) => console.warn('Real-time orders listener:', err)
+    );
+
+    // 2. Real-time reservations listener
+    const unsubReservations = onSnapshot(
+      collection(db, 'reservations'),
+      (snap) => {
+        if (!snap.empty) {
+          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Reservation[];
+          list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+          setBookings(list);
+        }
+      },
+      (err) => console.warn('Real-time reservations listener:', err)
+    );
+
+    // 3. Real-time table reservations listener
+    const unsubTableRes = onSnapshot(
+      collection(db, 'table_reservations'),
+      (snap) => {
+        if (!snap.empty) {
+          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as TableReservation[];
+          setTableReservations(list);
+        }
+      },
+      (err) => console.warn('Real-time table reservations listener:', err)
+    );
+
+    // 4. Real-time rooms listener
+    const unsubRooms = onSnapshot(
+      collection(db, 'rooms'),
+      (snap) => {
+        if (!snap.empty) {
+          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Room[];
+          setRooms(list);
+        }
+      },
+      (err) => console.warn('Real-time rooms listener:', err)
+    );
+
+    // 5. Real-time inventory listener
+    const unsubInventory = onSnapshot(
+      collection(db, 'inventory'),
+      (snap) => {
+        if (!snap.empty) {
+          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as InventoryItem[];
+          setInventory(list);
+        }
+      },
+      (err) => console.warn('Real-time inventory listener:', err)
+    );
+
+    return () => {
+      unsubOrders();
+      unsubReservations();
+      unsubTableRes();
+      unsubRooms();
+      unsubInventory();
+    };
+  }, []);
 
   // Dynamic calculations
   const occupiedRoomsCount = rooms.filter((r) => r.housekeeping_state === 'occupied').length;

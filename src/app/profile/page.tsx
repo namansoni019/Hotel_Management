@@ -3,8 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
-import type { User } from '@supabase/supabase-js';
+import { subscribeToAuth, signOutUser, getUserProfile } from '@/lib/firebase/auth';
+import type { FirebaseUser } from '@/lib/firebase/auth';
 import {
   User as UserIcon,
   Mail,
@@ -23,24 +23,31 @@ import {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [profileData, setProfileData] = useState<{ name?: string; phone?: string; role?: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data, error }) => {
-      if (error || !data.user) {
+    const unsubscribe = subscribeToAuth(async (currentUser) => {
+      if (!currentUser) {
         router.push('/login?redirect=/profile');
       } else {
-        setUser(data.user);
+        setUser(currentUser);
+        const data = await getUserProfile(currentUser.uid);
+        if (data) {
+          setProfileData(data);
+        }
         setLoading(false);
       }
     });
+
+    return () => {
+      unsubscribe();
+    };
   }, [router]);
 
   const handleSignOut = async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    await signOutUser();
     router.refresh();
     router.push('/');
   };
@@ -55,13 +62,14 @@ export default function ProfilePage() {
   }
 
   const fullName =
-    user?.user_metadata?.full_name ||
+    profileData?.name ||
+    user?.displayName ||
     user?.email?.split('@')[0] ||
     'Royal Guest';
   const initial = fullName.charAt(0).toUpperCase();
-  const phone = user?.user_metadata?.phone || 'Not Provided';
-  const createdDate = user?.created_at
-    ? new Date(user.created_at).toLocaleDateString('en-IN', {
+  const phone = profileData?.phone || user?.phoneNumber || 'Not Provided';
+  const createdDate = user?.metadata?.creationTime
+    ? new Date(user.metadata.creationTime).toLocaleDateString('en-IN', {
         day: 'numeric',
         month: 'long',
         year: 'numeric',

@@ -1,26 +1,45 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseClient } from '@/lib/services/supabase-helper';
+import {
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  addDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { dataRepository } from '@/lib/data/repository';
 import type { Outlet, Order, Table } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
-    const supabase = getSupabaseClient();
     let outlets: Outlet[] = [];
     let tables: Table[] = [];
     let orders: Order[] = [];
 
-    if (supabase) {
-      const [outRes, tblRes, ordRes] = await Promise.all([
-        supabase.from('outlets').select('*'),
-        supabase.from('tables').select('*'),
-        supabase.from('orders').select('*'),
+    try {
+      const [outSnap, tblSnap, ordSnap] = await Promise.all([
+        getDocs(collection(db, 'outlets')),
+        getDocs(collection(db, 'tables')),
+        getDocs(collection(db, 'orders')),
       ]);
 
-      outlets = outRes.data?.length ? outRes.data : dataRepository.getOutlets();
-      tables = tblRes.data?.length ? tblRes.data : dataRepository.getTables();
-      orders = ordRes.data?.length ? ordRes.data : dataRepository.getOrders();
-    } else {
+      outlets = !outSnap.empty
+        ? (outSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as Outlet[])
+        : dataRepository.getOutlets();
+
+      tables = !tblSnap.empty
+        ? (tblSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as Table[])
+        : dataRepository.getTables();
+
+      orders = !ordSnap.empty
+        ? (ordSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as Order[])
+        : dataRepository.getOrders();
+    } catch {
       outlets = dataRepository.getOutlets();
       tables = dataRepository.getTables();
       orders = dataRepository.getOrders();
@@ -58,60 +77,49 @@ export async function GET() {
 
       // Active KOTs (orders currently in kitchen flow)
       const activeOrders = outletOrders.filter((o) =>
-        ['new', 'accepted', 'preparing', 'ready'].includes(o.status)
+        ['placed', 'accepted', 'in_kitchen', 'ready_for_pickup'].includes(o.status)
       );
-      const preparingCount = outletOrders.filter((o) => o.status === 'preparing').length;
-      const readyCount = outletOrders.filter((o) => o.status === 'ready').length;
-      const newCount = outletOrders.filter((o) => o.status === 'new').length;
 
-      // Occupied tables: tables associated with active dine-in orders
-      const occupiedTableIds = new Set(
-        outletOrders
-          .filter((o) => o.table_id && ['new', 'accepted', 'preparing', 'ready', 'served'].includes(o.status))
-          .map((o) => o.table_id)
-      );
-      const occupiedCount = Math.min(occupiedTableIds.size, outletTables.length);
-      const availableCount = Math.max(0, outletTables.length - occupiedCount);
-
-      // Today's Sales: Sum of today's non-cancelled orders
-      const today = new Date().toISOString().slice(0, 10);
+      // Revenue today
+      const today = new Date().toISOString().split('T')[0];
       const todayOrders = outletOrders.filter(
-        (o) => o.status !== 'cancelled' && (o.created_at || '').startsWith(today)
+        (o) => o.created_at.startsWith(today) && o.status !== 'cancelled'
       );
-      const todaySalesMinor = todayOrders.reduce(
-        (sum, o) => sum + (o.total_minor || o.total_amount_minor || 0),
-        0
-      );
-      const aovMinor = todayOrders.length > 0 ? Math.round(todaySalesMinor / todayOrders.length) : 0;
+      const todayRevenueMinor = todayOrders.reduce((sum, o) => sum + (o.total_minor || 0), 0);
+
+      // Table occupancy
+      const occupiedTables = outletTables.filter((t) => t.status === 'occupied').length;
+
+      // Pending action items
+      const pendingAlerts: string[] = [];
+      if (outlet.is_paused) pendingAlerts.push('Service currently paused by royal management');
+      if (activeOrders.length > 5) pendingAlerts.push(`${activeOrders.length} active orders in kitchen queue`);
+      if (occupiedTables === outletTables.length && outletTables.length > 0)
+        pendingAlerts.push('All palace tables at 100% capacity');
 
       return {
         ...outlet,
         name: displayName,
         image_url: displayImage,
         room_service_enabled: roomServiceEnabled,
-        operating_days: outlet.operating_days || {
-          Monday: true,
-          Tuesday: true,
-          Wednesday: true,
-          Thursday: true,
-          Friday: true,
-          Saturday: true,
-          Sunday: true,
-        },
         metrics: {
-          totalTables: outletTables.length,
-          occupiedTables: occupiedCount,
-          availableTables: availableCount,
-          reservedTables: 0,
-          activeKOT: activeOrders.length,
-          preparingKOT: preparingCount,
-          readyKOT: readyCount,
-          newKOT: newCount,
-          todaySalesMinor,
-          todaySalesFormatted: `₹${(todaySalesMinor / 100).toLocaleString('en-IN')}`,
-          aovMinor,
-          aovFormatted: `₹${(aovMinor / 100).toLocaleString('en-IN')}`,
-          orderCountToday: todayOrders.length,
+          total_tables: outletTables.length,
+          occupied_tables: occupiedTables,
+          table_occupancy_pct: outletTables.length
+            ? Math.round((occupiedTables / outletTables.length) * 100)
+            : 0,
+          active_kots: activeOrders.length,
+          today_orders_count: todayOrders.length,
+          today_revenue_minor: todayRevenueMinor,
+          avg_ticket_minor: todayOrders.length
+            ? Math.round(todayRevenueMinor / todayOrders.length)
+            : 0,
+          pending_alerts: pendingAlerts,
+          operating_status: outlet.is_paused
+            ? 'paused'
+            : outlet.is_active
+            ? 'active'
+            : 'closed',
         },
       };
     });
@@ -119,6 +127,12 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       outlets: enrichedOutlets,
+      summary: {
+        total_outlets: outlets.length,
+        active_outlets: outlets.filter((o) => o.is_active && !o.is_paused).length,
+        total_active_kots: enrichedOutlets.reduce((s, o) => s + o.metrics.active_kots, 0),
+        total_today_revenue_minor: enrichedOutlets.reduce((s, o) => s + o.metrics.today_revenue_minor, 0),
+      },
     });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -128,20 +142,11 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const {
-      name,
-      type,
-      operating_hours,
-      dine_in_enabled,
-      pickup_enabled,
-      delivery_enabled,
-      room_service_enabled,
-      image_url,
-    } = body;
+    const { name, type, operating_hours } = body;
 
     if (!name || !type) {
       return NextResponse.json(
-        { success: false, error: 'Outlet name and type are required' },
+        { success: false, error: 'Name and type are required' },
         { status: 400 }
       );
     }
@@ -149,12 +154,12 @@ export async function POST(request: Request) {
     const newOutlet = dataRepository.addOutlet({
       name,
       type,
-      operating_hours: operating_hours || { all: { open: '08:00', close: '22:00' } },
-      dine_in_enabled: dine_in_enabled ?? true,
-      pickup_enabled: pickup_enabled ?? true,
-      delivery_enabled: delivery_enabled ?? true,
-      room_service_enabled: room_service_enabled ?? false,
-      image_url: image_url || (type === 'cafe' ? '/images/dining/cafe-lounge.png' : '/images/dining/rajasthani-restaurant.png'),
+      operating_hours: operating_hours || '07:00 AM – 11:00 PM',
+      operating_days: { mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true },
+      dine_in_enabled: true,
+      pickup_enabled: true,
+      delivery_enabled: type === 'restaurant',
+      room_service_enabled: type === 'restaurant',
       pickup_lead_minutes: 20,
       delivery_lead_minutes: 40,
       delivery_fee_minor: 4000,
@@ -167,10 +172,8 @@ export async function POST(request: Request) {
       property_id: dataRepository.getProperty().id,
     });
 
-    // Also persist to Supabase if configured
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      await supabase.from('outlets').insert({
+    try {
+      await setDoc(doc(db, 'outlets', newOutlet.id), {
         id: newOutlet.id,
         property_id: newOutlet.property_id,
         name: newOutlet.name,
@@ -180,10 +183,10 @@ export async function POST(request: Request) {
         pickup_enabled: newOutlet.pickup_enabled,
         delivery_enabled: newOutlet.delivery_enabled,
         is_paused: newOutlet.is_paused,
+        created_at: serverTimestamp(),
       });
 
-      // Audit event
-      await supabase.from('audit_events').insert({
+      await addDoc(collection(db, 'audit_events'), {
         actor_name: 'Administrator',
         actor_role: 'Administrator',
         action_type: 'PRICE_CHANGE',
@@ -191,7 +194,10 @@ export async function POST(request: Request) {
         entity_id: newOutlet.id,
         details: `Created new palace outlet: ${newOutlet.name} (${newOutlet.type})`,
         ip_address: '127.0.0.1',
+        created_at: serverTimestamp(),
       });
+    } catch {
+      // Ignored
     }
 
     return NextResponse.json({ success: true, outlet: newOutlet }, { status: 201 });
@@ -217,66 +223,62 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ success: false, error: 'Outlet not found' }, { status: 404 });
     }
 
-    // Persist to Supabase if configured
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      try {
-        const dbPatch: Record<string, any> = {};
-        const allowedColumns = [
-          'name',
-          'type',
-          'operating_hours',
-          'dine_in_enabled',
-          'pickup_enabled',
-          'delivery_enabled',
-          'pickup_lead_minutes',
-          'delivery_lead_minutes',
-          'delivery_fee_minor',
-          'min_delivery_order_minor',
-          'delivery_estimate',
-          'is_paused',
-          'tax_rate_bps',
-          'service_charge_bps',
-        ];
+    try {
+      const allowedKeys = [
+        'name',
+        'type',
+        'operating_hours',
+        'dine_in_enabled',
+        'pickup_enabled',
+        'delivery_enabled',
+        'pickup_lead_minutes',
+        'delivery_lead_minutes',
+        'delivery_fee_minor',
+        'min_delivery_order_minor',
+        'delivery_estimate',
+        'is_paused',
+        'tax_rate_bps',
+        'service_charge_bps',
+      ];
 
-        for (const col of allowedColumns) {
-          if (col in patch) {
-            dbPatch[col] = (patch as any)[col];
-          }
+      const dbPatch: Record<string, any> = {};
+      for (const col of allowedKeys) {
+        if (col in patch) {
+          dbPatch[col] = (patch as any)[col];
         }
-        dbPatch.updated_at = new Date().toISOString();
-
-        await supabase.from('outlets').update(dbPatch).eq('id', id);
-
-        // Log genuine operational audit event
-        let detailDesc = `Updated outlet ${updated.name} settings`;
-        if ('is_paused' in patch || 'is_active' in patch) {
-          detailDesc = `${updated.name} marked ${patch.is_paused ? 'closed' : 'open'}`;
-        } else if (
-          'dine_in_enabled' in patch ||
-          'room_service_enabled' in patch ||
-          'delivery_enabled' in patch ||
-          'pickup_enabled' in patch
-        ) {
-          detailDesc = `Channel availability updated for ${updated.name}`;
-        } else if ('operating_hours' in patch) {
-          detailDesc = `Operating schedule updated for ${updated.name}`;
-        } else if ('operating_days' in patch) {
-          detailDesc = `Operating days updated for ${updated.name}`;
-        }
-
-        await supabase.from('audit_events').insert({
-          actor_name: 'Administrator',
-          actor_role: 'Administrator',
-          action_type: 'PRICE_CHANGE',
-          entity_type: 'Outlet',
-          entity_id: id,
-          details: detailDesc,
-          ip_address: '127.0.0.1',
-        });
-      } catch (dbErr) {
-        console.warn('Supabase update warning:', dbErr);
       }
+      dbPatch.updated_at = new Date().toISOString();
+
+      await updateDoc(doc(db, 'outlets', id), dbPatch);
+
+      let detailDesc = `Updated outlet ${updated.name} settings`;
+      if ('is_paused' in patch || 'is_active' in patch) {
+        detailDesc = `${updated.name} marked ${patch.is_paused ? 'closed' : 'open'}`;
+      } else if (
+        'dine_in_enabled' in patch ||
+        'room_service_enabled' in patch ||
+        'delivery_enabled' in patch ||
+        'pickup_enabled' in patch
+      ) {
+        detailDesc = `Channel availability updated for ${updated.name}`;
+      } else if ('operating_hours' in patch) {
+        detailDesc = `Operating schedule updated for ${updated.name}`;
+      } else if ('operating_days' in patch) {
+        detailDesc = `Operating days updated for ${updated.name}`;
+      }
+
+      await addDoc(collection(db, 'audit_events'), {
+        actor_name: 'Administrator',
+        actor_role: 'Administrator',
+        action_type: 'PRICE_CHANGE',
+        entity_type: 'Outlet',
+        entity_id: id,
+        details: detailDesc,
+        ip_address: '127.0.0.1',
+        created_at: serverTimestamp(),
+      });
+    } catch (dbErr) {
+      console.warn('Firestore update warning:', dbErr);
     }
 
     return NextResponse.json({ success: true, outlet: updated });
@@ -293,9 +295,10 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ success: false, error: 'Outlet ID is required' }, { status: 400 });
     }
     const deleted = dataRepository.deleteOutlet(id);
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      await supabase.from('outlets').delete().eq('id', id);
+    try {
+      await deleteDoc(doc(db, 'outlets', id));
+    } catch {
+      // Ignored
     }
     return NextResponse.json({ success: true, deleted });
   } catch (error: any) {
