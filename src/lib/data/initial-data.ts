@@ -74,6 +74,8 @@ export const INITIAL_OUTLETS: Outlet[] = [
     },
     tax_rate_bps: 500,
     service_charge_bps: 250,
+    packaging_fee_minor: 2500,
+    packaging_enabled: true,
     created_at: '2026-01-01T00:00:00Z',
   },
   {
@@ -107,6 +109,8 @@ export const INITIAL_OUTLETS: Outlet[] = [
     },
     tax_rate_bps: 500,
     service_charge_bps: 0,
+    packaging_fee_minor: 2000,
+    packaging_enabled: true,
     created_at: '2026-01-01T00:00:00Z',
   },
 ];

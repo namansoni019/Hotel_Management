@@ -111,6 +111,8 @@ export const dataRepository = {
       is_active: outletData.is_active ?? true,
       tax_rate_bps: outletData.tax_rate_bps ?? 500,
       service_charge_bps: outletData.service_charge_bps ?? 250,
+      packaging_fee_minor: outletData.packaging_fee_minor ?? 2500,
+      packaging_enabled: outletData.packaging_enabled ?? true,
       created_at: new Date().toISOString(),
       image_url: outletData.image_url || '/images/dining/rajasthani-restaurant.png',
     };

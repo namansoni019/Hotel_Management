@@ -67,7 +67,30 @@ export interface Outlet {
   is_active?: boolean;
   tax_rate_bps: number;
   service_charge_bps: number;
+  packaging_fee_minor?: number;
+  packaging_enabled?: boolean;
   created_at: string;
+}
+
+export interface BillingSettings {
+  gstin: string;
+  business_name: string;
+  restaurant_gst_percent: number;
+  rooms_gst_percent: number;
+  service_charge_percent: number;
+  service_charge_enabled: boolean;
+  round_off_cash: boolean;
+  delivery_charges: number;
+  delivery_free_above: number;
+  delivery_enabled: boolean;
+  delivery_estimate_mins: number;
+  packaging_charges_pickup: number;
+  packaging_charges_delivery: number;
+  packaging_charges_enabled: boolean;
+  packaging_note: string;
+  invoice_prefix: string;
+  next_invoice_number: number;
+  invoice_footer_note: string;
 }
 
 // ── Room Type ──
@@ -265,6 +288,7 @@ export interface Order {
   delivery_address: string | null;
   delivery_notes: string | null;
   delivery_fee_minor: number;
+  packaging_fee_minor?: number;
   subtotal_minor: number;
   tax_minor: number;
   service_charge_minor: number;

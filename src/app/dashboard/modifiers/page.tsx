@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import {
   Sparkles,
   Plus,
@@ -15,6 +16,8 @@ import {
   AlertTriangle,
   RefreshCw,
   Layers,
+  ArrowRight,
+  Receipt,
 } from 'lucide-react';
 import type { ModifierGroup, ModifierOption } from '@/lib/services/modifiers-service';
 
@@ -326,6 +329,23 @@ export default function ModifiersPage() {
           <span>{notification.message}</span>
         </div>
       )}
+
+      {/* Notice Banner: Moved to Taxes & Billing */}
+      <div className="bg-[#FAF6F0] border border-[#E8DCD2] rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+        <div className="flex items-center gap-2.5">
+          <Receipt className="w-4 h-4 text-[#4F0809]" />
+          <span className="text-xs text-[#302421]">
+            <b>Looking for Taxes &amp; Billing?</b> Modifiers in the sidebar has been replaced with the dedicated <b>Taxes &amp; Billing</b> hub.
+          </span>
+        </div>
+        <Link
+          href="/dashboard/taxes-billing"
+          className="inline-flex items-center gap-1 text-xs font-bold text-[#4F0809] hover:text-[#680b0c] underline shrink-0"
+        >
+          <span>Go to Taxes &amp; Billing</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
+      </div>
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-[#E8DCD2]">

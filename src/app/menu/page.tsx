@@ -8,7 +8,7 @@ import { formatMoney } from '@/lib/utils/money';
 import {
   INITIAL_OUTLETS,
 } from '@/lib/data/initial-data';
-import type { MenuItem, MenuCategory, Outlet } from '@/lib/types';
+import type { MenuItem, MenuCategory, Outlet, BillingSettings } from '@/lib/types';
 import {
   Utensils,
   ShoppingBag,
@@ -71,18 +71,28 @@ export default function MenuPage() {
   // Live Menu Categories from API/Firestore with graceful fallback
   const [liveMenuCategories, setLiveMenuCategories] = useState<MenuCategory[] | null>(null);
   const [isLoadingMenu, setIsLoadingMenu] = useState(false);
+  const [billingSettings, setBillingSettings] = useState<BillingSettings | null>(null);
 
-  // Fetch live menu categories on mount
+  // Fetch live menu categories and billing settings on mount
   useEffect(() => {
     let isMounted = true;
     async function fetchMenuData() {
       setIsLoadingMenu(true);
       try {
-        const res = await fetch('/api/menu');
+        const [res, billRes] = await Promise.all([
+          fetch('/api/menu'),
+          fetch('/api/settings/billing').catch(() => null),
+        ]);
         if (res.ok) {
           const data = await res.json();
           if (isMounted) {
             setLiveMenuCategories(data.categories || []);
+          }
+        }
+        if (billRes && billRes.ok) {
+          const bData = await billRes.json();
+          if (isMounted && bData.settings) {
+            setBillingSettings(bData.settings);
           }
         }
       } catch (err) {
@@ -242,11 +252,46 @@ export default function MenuPage() {
   const totalCartCount = cartEntries.reduce((sum, ci) => sum + ci.quantity, 0);
   const subtotalMinor = cartEntries.reduce((sum, ci) => sum + ci.item.price_minor * ci.quantity, 0);
 
-  // Use current outlet tax rate or 5% default
-  const taxRateBps = currentOutlet.tax_rate_bps || 500;
+  // Use restaurant GST from billing settings or outlet tax rate
+  const taxRateBps = billingSettings?.restaurant_gst_percent
+    ? Math.round(billingSettings.restaurant_gst_percent * 100)
+    : (currentOutlet.tax_rate_bps || 500);
   const taxMinor = Math.round((subtotalMinor * taxRateBps) / 10000);
-  const deliveryFeeMinor = orderingMethod === 'delivery' ? currentOutlet.delivery_fee_minor || 4000 : 0;
-  const totalMinor = subtotalMinor + taxMinor + deliveryFeeMinor;
+
+  // Takeaway / Delivery packaging charges
+  const packagingEnabled = billingSettings
+    ? billingSettings.packaging_charges_enabled
+    : (currentOutlet.packaging_enabled ?? true);
+  let packagingFeeMinor = 0;
+  if (packagingEnabled && cartEntries.length > 0) {
+    if (orderingMethod === 'pickup') {
+      packagingFeeMinor = billingSettings
+        ? Math.round(billingSettings.packaging_charges_pickup * 100)
+        : (currentOutlet.packaging_fee_minor || 2500);
+    } else if (orderingMethod === 'delivery') {
+      packagingFeeMinor = billingSettings
+        ? Math.round(billingSettings.packaging_charges_delivery * 100)
+        : (currentOutlet.packaging_fee_minor || 2500);
+    }
+  }
+
+  // Online delivery fee calculation with free threshold
+  const freeThresholdMinor = billingSettings?.delivery_free_above
+    ? Math.round(billingSettings.delivery_free_above * 100)
+    : 50000;
+  let deliveryFeeMinor = 0;
+  if (orderingMethod === 'delivery') {
+    if (freeThresholdMinor > 0 && subtotalMinor >= freeThresholdMinor) {
+      deliveryFeeMinor = 0;
+    } else {
+      deliveryFeeMinor = billingSettings
+        ? Math.round(billingSettings.delivery_charges * 100)
+        : (currentOutlet.delivery_fee_minor || 5000);
+    }
+  }
+
+  const rawTotalMinor = subtotalMinor + taxMinor + packagingFeeMinor + deliveryFeeMinor;
+  const totalMinor = billingSettings?.round_off_cash ? Math.round(rawTotalMinor / 100) * 100 : rawTotalMinor;
 
   // Handle Checkout Submission
   const handlePlaceOrder = async (e: React.FormEvent) => {
@@ -300,6 +345,7 @@ export default function MenuPage() {
           subtotal_minor: subtotalMinor,
           tax_minor: taxMinor,
           delivery_fee_minor: deliveryFeeMinor,
+          packaging_fee_minor: packagingFeeMinor,
           total_minor: totalMinor,
           order_lines: orderLines,
         }),
@@ -1140,13 +1186,25 @@ export default function MenuPage() {
                     <span className="font-medium text-[#4F0809]">{formatMoney(subtotalMinor)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>GST (5%)</span>
+                    <span>GST ({(taxRateBps / 100).toFixed(1)}%)</span>
                     <span className="font-medium text-[#4F0809]">{formatMoney(taxMinor)}</span>
                   </div>
+                  {(orderingMethod === 'pickup' || orderingMethod === 'delivery') && packagingFeeMinor > 0 && (
+                    <div className="flex justify-between text-[#856B4D]">
+                      <span>Packaging Surcharge</span>
+                      <span className="font-medium text-[#4F0809]">{formatMoney(packagingFeeMinor)}</span>
+                    </div>
+                  )}
                   {orderingMethod === 'delivery' && (
                     <div className="flex justify-between">
                       <span>Delivery Fee</span>
-                      <span className="font-medium text-[#4F0809]">{formatMoney(deliveryFeeMinor)}</span>
+                      <span className="font-medium text-[#4F0809]">
+                        {deliveryFeeMinor === 0 ? (
+                          <span className="text-[#2E7D32] font-bold">FREE</span>
+                        ) : (
+                          formatMoney(deliveryFeeMinor)
+                        )}
+                      </span>
                     </div>
                   )}
                   <div className="flex justify-between font-bold text-sm text-[#4F0809] pt-2 border-t border-[#E8DFCE]/60">
@@ -1322,7 +1380,13 @@ export default function MenuPage() {
                   <span>{formatMoney(totalMinor)}</span>
                 </div>
                 <div className="text-[11px] text-[#6B533B]">
-                  Includes GST &amp; kitchen ticket generation.
+                  Includes Subtotal ({formatMoney(subtotalMinor)}) + GST ({formatMoney(taxMinor)})
+                  {packagingFeeMinor > 0 ? ` + Packaging (${formatMoney(packagingFeeMinor)})` : ''}
+                  {orderingMethod === 'delivery'
+                    ? deliveryFeeMinor === 0
+                      ? ' + FREE Delivery'
+                      : ` + Delivery (${formatMoney(deliveryFeeMinor)})`
+                    : ''}
                 </div>
               </div>
 

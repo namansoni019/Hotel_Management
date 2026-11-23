@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   Settings,
   Building,
@@ -16,12 +17,15 @@ import {
   Mail,
   Phone,
   MapPin,
+  ArrowRight,
+  Truck,
+  Package,
 } from 'lucide-react';
 import { dataRepository } from '@/lib/data/repository';
 import type { Property, Outlet } from '@/lib/types';
 
 export default function DashboardSettingsPage() {
-  const [activeTab, setActiveTab] = useState<'property' | 'outlets' | 'taxes' | 'notifications' | 'security'>('property');
+  const [activeTab, setActiveTab] = useState<'property' | 'outlets' | 'notifications' | 'security'>('property');
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
 
   // 1. Property State
@@ -111,11 +115,6 @@ export default function DashboardSettingsPage() {
     triggerSaveNotification('Property profile updated successfully.');
   };
 
-  const handleSaveTaxes = (e: React.FormEvent) => {
-    e.preventDefault();
-    triggerSaveNotification('Tax & Billing configuration saved.');
-  };
-
   return (
     <div className="space-y-4">
       {/* ── Header ── */}
@@ -145,7 +144,6 @@ export default function DashboardSettingsPage() {
         {[
           { id: 'property', label: 'Property & Profile', icon: Building },
           { id: 'outlets', label: 'Dining Outlets', icon: UtensilsCrossed },
-          { id: 'taxes', label: 'Taxes & Billing', icon: Receipt },
           { id: 'notifications', label: 'Alert Preferences', icon: Bell },
           { id: 'security', label: 'Roles & Security', icon: Shield },
         ].map((tab) => {
@@ -166,6 +164,33 @@ export default function DashboardSettingsPage() {
             </button>
           );
         })}
+      </div>
+
+      {/* ── Dedicated Taxes & Billing Page Notification Banner ── */}
+      <div className="bg-[#FAF6F0] border border-[#E8DCD2] rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-[#4F0809]/10 text-[#4F0809] flex items-center justify-center shrink-0">
+            <Receipt className="w-5 h-5" />
+          </div>
+          <div>
+            <h3
+              className="text-sm font-bold text-[#4F0809]"
+              style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+            >
+              GST Taxes, Delivery Charges &amp; Packaging Surcharges
+            </h3>
+            <p className="text-xs text-[#81736D]">
+              Statutory tax percentages, online delivery pricing, and pickup packaging surcharges are managed in their dedicated section.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/dashboard/taxes-billing"
+          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#4F0809] hover:bg-[#680b0c] text-white text-xs font-semibold shadow-xs transition shrink-0"
+        >
+          <span>Open Taxes &amp; Billing</span>
+          <ArrowRight className="w-3.5 h-3.5 text-[#D8AA67]" />
+        </Link>
       </div>
 
       {/* ── Tab 1: Property Profile ── */}
@@ -323,99 +348,7 @@ export default function DashboardSettingsPage() {
         </div>
       )}
 
-      {/* ── Tab 3: Taxes & Billing ── */}
-      {activeTab === 'taxes' && (
-        <div className="bg-white border border-[#E8DCD2] rounded-xl p-5 shadow-xs">
-          <h2
-            className="text-lg font-bold text-[#4F0809] mb-1"
-            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
-          >
-            GST Taxation, Service Levies &amp; Invoicing
-          </h2>
-          <p className="text-xs text-[#81736D] mb-4">
-            Statutory tax percentages and billing prefixes according to Government of India regulations
-          </p>
-
-          <form onSubmit={handleSaveTaxes} className="space-y-3 text-xs max-w-2xl">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-semibold text-[#302421] mb-1">
-                  State GSTIN Number *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={gstin}
-                  onChange={(e) => setGstin(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs font-mono focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-[#302421] mb-1">
-                  Invoice Number Prefix
-                </label>
-                <input
-                  type="text"
-                  value={invoicePrefix}
-                  onChange={(e) => setInvoicePrefix(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs font-mono focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="block text-[11px] font-semibold text-[#302421] mb-1">
-                  Restaurant GST (%)
-                </label>
-                <input
-                  type="text"
-                  value={foodGst}
-                  onChange={(e) => setFoodGst(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-[#302421] mb-1">
-                  Rooms GST (%)
-                </label>
-                <input
-                  type="text"
-                  value={roomGst}
-                  onChange={(e) => setRoomGst(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-[#302421] mb-1">
-                  Palace Service Charge (%)
-                </label>
-                <input
-                  type="text"
-                  value={serviceCharge}
-                  onChange={(e) => setServiceCharge(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="pt-3">
-              <button
-                type="submit"
-                className="px-4 py-2 rounded-lg bg-[#4F0809] hover:bg-[#6B1518] text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition"
-              >
-                <Save className="w-3.5 h-3.5 text-[#D8AA67]" />
-                Update Tax Settings
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* ── Tab 4: Notifications ── */}
+      {/* ── Tab 3: Notifications ── */}
       {activeTab === 'notifications' && (
         <div className="bg-white border border-[#E8DCD2] rounded-xl p-5 shadow-xs">
           <h2

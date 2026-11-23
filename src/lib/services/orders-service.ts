@@ -72,6 +72,7 @@ export const ordersService = {
     delivery_address: string | null;
     delivery_notes: string | null;
     delivery_fee_minor: number;
+    packaging_fee_minor?: number;
     subtotal_minor: number;
     tax_minor: number;
     service_charge_minor: number;

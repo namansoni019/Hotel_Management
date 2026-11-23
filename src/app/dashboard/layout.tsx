@@ -479,18 +479,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {sidebarOpen && <span className="truncate">Menu Builder</span>}
             </Link>
 
-            {/* 11. Modifiers */}
+            {/* 11. Taxes & Billing (Replaced Modifiers as requested) */}
             <Link
-              href="/dashboard/modifiers"
+              href="/dashboard/taxes-billing"
               className={`flex items-center px-2.5 py-2 rounded-lg text-[12px] font-medium transition-all ${
-                pathname.startsWith('/dashboard/modifiers') || pathname.includes('tab=modifiers')
+                pathname.startsWith('/dashboard/taxes-billing') || pathname.startsWith('/dashboard/billing')
                   ? 'bg-[#6B1518] text-white font-semibold shadow-sm'
                   : 'text-[#F6EAE0]/80 hover:text-white hover:bg-[#6B1518]/40'
               }`}
-              title="Modifiers"
+              title="Taxes & Billing"
             >
-              <Sparkles className="w-4 h-4 mr-2.5 shrink-0 text-[#E1B46F]" />
-              {sidebarOpen && <span className="truncate">Modifiers</span>}
+              <Receipt className="w-4 h-4 mr-2.5 shrink-0 text-[#E1B46F]" />
+              {sidebarOpen && <span className="truncate">Taxes &amp; Billing</span>}
             </Link>
 
             {/* 12. Promotions */}

@@ -44,7 +44,7 @@ import {
   BedDouble,
   Hotel,
 } from 'lucide-react';
-import type { MenuItem, Reservation } from '@/lib/types';
+import type { MenuItem, Reservation, BillingSettings } from '@/lib/types';
 
 interface POSTable {
   id: string;
@@ -129,6 +129,7 @@ export default function POSBillingPage() {
   const [specialNote, setSpecialNote] = useState('');
 
   // Discount & Payment
+  const [billingSettings, setBillingSettings] = useState<BillingSettings | null>(null);
   const [discountAmount, setDiscountAmount] = useState(0);
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
   const [tempDiscountPercent, setTempDiscountPercent] = useState('10');
@@ -165,6 +166,8 @@ export default function POSBillingPage() {
     subtotal: number;
     discount: number;
     tax: number;
+    packagingFee?: number;
+    deliveryFee?: number;
     total: number;
     paymentMethod: string;
     table: string;
@@ -185,11 +188,19 @@ export default function POSBillingPage() {
   useEffect(() => {
     const fetchLive = async () => {
       try {
-        const [tabRes, menuRes, resRes] = await Promise.all([
+        const [tabRes, menuRes, resRes, billRes] = await Promise.all([
           fetch('/api/tables'),
           fetch('/api/menu'),
           fetch('/api/reservations'),
+          fetch('/api/settings/billing').catch(() => null),
         ]);
+
+        if (billRes && billRes.ok) {
+          const billData = await billRes.json();
+          if (billData.settings) {
+            setBillingSettings(billData.settings);
+          }
+        }
 
         if (resRes.ok) {
           const resData = await resRes.json();
@@ -273,11 +284,36 @@ export default function POSBillingPage() {
     });
   }, [menuItems, selectedCategory, menuSearch]);
 
-  // Cart Calculations
+  // Cart Calculations with Surcharges & Taxes
   const totalItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const tax = Math.round(subtotal * 0.05 * 100) / 100; // 5% GST
-  const finalTotal = Math.max(0, subtotal - discountAmount + tax);
+  const gstPercent = billingSettings?.restaurant_gst_percent ?? 5;
+  const tax = Math.round(((subtotal * gstPercent) / 100) * 100) / 100;
+
+  // Takeaway & Delivery Packaging Surcharge
+  const isPackagingEnabled = billingSettings ? billingSettings.packaging_charges_enabled : true;
+  let packagingCharge = 0;
+  if (isPackagingEnabled && cart.length > 0) {
+    if (orderType === 'takeaway') {
+      packagingCharge = billingSettings ? billingSettings.packaging_charges_pickup : 25;
+    } else if (orderType === 'delivery') {
+      packagingCharge = billingSettings ? billingSettings.packaging_charges_delivery : 25;
+    }
+  }
+
+  // Online Delivery Charge
+  let deliveryCharge = 0;
+  if (orderType === 'delivery' && (billingSettings?.delivery_enabled ?? true)) {
+    const freeAbove = billingSettings?.delivery_free_above ?? 500;
+    if (freeAbove > 0 && subtotal >= freeAbove) {
+      deliveryCharge = 0;
+    } else {
+      deliveryCharge = billingSettings ? billingSettings.delivery_charges : 50;
+    }
+  }
+
+  const rawTotal = Math.max(0, subtotal - discountAmount + tax + packagingCharge + deliveryCharge);
+  const finalTotal = billingSettings?.round_off_cash ? Math.round(rawTotal) : Math.round(rawTotal * 100) / 100;
 
   // Update tender amount when finalTotal changes
   useEffect(() => {
@@ -446,6 +482,8 @@ export default function POSBillingPage() {
           subtotal,
           discount: discountAmount,
           tax,
+          packagingFee: packagingCharge,
+          deliveryFee: deliveryCharge,
           total: finalTotal,
           paymentMethod: methodDisplay,
           table: selectedTable ? selectedTable.number : 'Counter',
@@ -462,7 +500,7 @@ export default function POSBillingPage() {
         setPgSuccess(false);
       }, 2000);
     }, 3000);
-  }, [cart, discountAmount, finalTotal, orderType, pgTab, selectedCustomer, selectedTable, subtotal, tax]);
+  }, [cart, discountAmount, finalTotal, orderType, pgTab, selectedCustomer, selectedTable, subtotal, tax, deliveryCharge, packagingCharge]);
 
   // Cash change calculation
   const cashReceived = parseFloat(pgCashReceived) || 0;
@@ -986,9 +1024,29 @@ export default function POSBillingPage() {
             </div>
 
             <div className="flex items-center justify-between">
-              <span>Tax (5% GST) ⓘ</span>
+              <span>Tax ({gstPercent}% GST) ⓘ</span>
               <span className="font-semibold text-[#302421]">₹{tax.toFixed(2)}</span>
             </div>
+
+            {packagingCharge > 0 && (
+              <div className="flex items-center justify-between text-[#B78A48]">
+                <span>Packaging Surcharge</span>
+                <span className="font-semibold">₹{packagingCharge.toFixed(2)}</span>
+              </div>
+            )}
+
+            {orderType === 'delivery' && (
+              <div className="flex items-center justify-between text-[#2563EB]">
+                <span>Delivery Charge</span>
+                <span className="font-semibold">
+                  {deliveryCharge === 0 ? (
+                    <span className="text-[#10B981] font-bold">FREE</span>
+                  ) : (
+                    `₹${deliveryCharge.toFixed(2)}`
+                  )}
+                </span>
+              </div>
+            )}
 
             <div className="pt-1.5 border-t border-[#E8DCD2] flex items-center justify-between text-sm">
               <span className="font-bold text-[#302421]">Total Amount</span>
@@ -1271,13 +1329,25 @@ export default function POSBillingPage() {
                 </div>
               )}
               <div className="flex justify-between">
-                <span>CGST (2.5%)</span>
+                <span>CGST ({(gstPercent / 2).toFixed(1)}%)</span>
                 <span>₹{(completedOrder.tax / 2).toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
-                <span>SGST (2.5%)</span>
+                <span>SGST ({(gstPercent / 2).toFixed(1)}%)</span>
                 <span>₹{(completedOrder.tax / 2).toFixed(2)}</span>
               </div>
+              {completedOrder.packagingFee !== undefined && completedOrder.packagingFee > 0 && (
+                <div className="flex justify-between text-[#B78A48]">
+                  <span>Packaging Surcharge</span>
+                  <span>₹{completedOrder.packagingFee.toFixed(2)}</span>
+                </div>
+              )}
+              {completedOrder.deliveryFee !== undefined && completedOrder.deliveryFee > 0 && (
+                <div className="flex justify-between text-[#2563EB]">
+                  <span>Delivery Charge</span>
+                  <span>₹{completedOrder.deliveryFee.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-bold text-sm text-[#4F0809] pt-1 border-t border-[#E8DCD2]">
                 <span>Grand Total</span>
                 <span>₹{completedOrder.total.toFixed(2)}</span>
