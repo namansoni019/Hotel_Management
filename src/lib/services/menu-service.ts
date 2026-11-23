@@ -122,25 +122,31 @@ export const menuService = {
     }
   },
 
-  async addMenuItem(itemData: {
+  async addMenuItem(itemData: Partial<MenuItem> & {
     category_id: string;
     name: string;
-    description: string;
     price_minor: number;
-    dietary_labels: string[];
-    image_url?: string;
   }): Promise<MenuItem> {
     try {
       const itemRef = collection(db, 'menu_items');
       const docRef = await addDoc(itemRef, {
         category_id: itemData.category_id,
         name: itemData.name,
-        description: itemData.description,
+        description: itemData.description || '',
         price_minor: itemData.price_minor,
-        dietary_labels: itemData.dietary_labels,
+        dietary_labels: itemData.dietary_labels || ['Vegetarian'],
         image_url: itemData.image_url || '/images/dining_ambiance.jpg',
-        is_available: true,
-        sort_order: 99,
+        is_available: itemData.is_available ?? true,
+        sort_order: itemData.sort_order ?? 99,
+        discount_percent: itemData.discount_percent ?? 0,
+        discount_price_minor: itemData.discount_price_minor ?? itemData.price_minor,
+        prep_time_minutes: itemData.prep_time_minutes ?? 15,
+        portions: itemData.portions || [],
+        extras: itemData.extras || [],
+        single_choice_extras: itemData.single_choice_extras ?? false,
+        portion_wise_extras: itemData.portion_wise_extras ?? false,
+        track_quantity: itemData.track_quantity ?? false,
+        stock_quantity: itemData.stock_quantity ?? 0,
         created_at: serverTimestamp(),
       });
 
@@ -157,7 +163,7 @@ export const menuService = {
 
   async updateMenuItem(
     itemId: string,
-    updates: Partial<Pick<MenuItem, 'name' | 'description' | 'price_minor' | 'dietary_labels' | 'is_available' | 'image_url' | 'category_id'>>
+    updates: Partial<MenuItem>
   ): Promise<MenuItem | null> {
     try {
       const itemRef = doc(db, 'menu_items', itemId);

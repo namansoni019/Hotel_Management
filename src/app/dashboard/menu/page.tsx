@@ -14,6 +14,8 @@ import {
   Copy,
   Trash2,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   MoreVertical,
   GripVertical,
   LayoutGrid,
@@ -25,6 +27,10 @@ import {
   Eye,
   CheckCircle2,
   Upload,
+  Clock,
+  Percent,
+  Layers,
+  ArrowRight,
 } from 'lucide-react';
 import type { MenuCategory, MenuItem } from '@/lib/types';
 
@@ -50,16 +56,38 @@ export default function MenuBuilderPage() {
   const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<MenuItem | null>(null);
 
-  // Form states for Add/Edit item
+  // Form states for Add/Edit item (matching exact mobile/desktop UI from screenshots)
   const [formItemId, setFormItemId] = useState('');
+  const [formMenuOutlet, setFormMenuOutlet] = useState<'e0000000-0000-0000-0000-000000000001' | 'e0000000-0000-0000-0000-000000000002'>('e0000000-0000-0000-0000-000000000001');
   const [formName, setFormName] = useState('');
   const [formDesc, setFormDesc] = useState('');
   const [formPrice, setFormPrice] = useState('');
+  const [formDiscountPercent, setFormDiscountPercent] = useState('');
+  const [formPrepTime, setFormPrepTime] = useState('15');
   const [formCategoryId, setFormCategoryId] = useState('');
   const [formDietary, setFormDietary] = useState<string[]>(['Vegetarian']);
   const [formImageUrl, setFormImageUrl] = useState('');
   const [formIsAvailable, setFormIsAvailable] = useState(true);
   const [formSubmitting, setFormSubmitting] = useState(false);
+
+  // Portion-wise extras & Portions
+  const [formPortionWiseExtras, setFormPortionWiseExtras] = useState(false);
+  const [formPortions, setFormPortions] = useState<Array<{ id: string; name: string; price: string }>>([]);
+
+  // Extras
+  const [formSingleChoiceExtras, setFormSingleChoiceExtras] = useState(false);
+  const [formExtras, setFormExtras] = useState<Array<{ id: string; name: string; price: string }>>([]);
+
+  // Stock Settings
+  const [formTrackQuantity, setFormTrackQuantity] = useState(false);
+  const [formStockQuantity, setFormStockQuantity] = useState('');
+
+  // Dropdown & Inline Category Creation
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [isInlineCreateCategory, setIsInlineCreateCategory] = useState(false);
+  const [inlineNewCategoryName, setInlineNewCategoryName] = useState('');
+  const [inlineNewCategorySaving, setInlineNewCategorySaving] = useState(false);
+  const categoryDropdownRef = useRef<HTMLDivElement>(null);
 
   // Image Upload state
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -95,6 +123,17 @@ export default function MenuBuilderPage() {
 
   useEffect(() => {
     loadMenu();
+  }, []);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(e.target as Node)) {
+        setIsCategoryDropdownOpen(false);
+        setIsInlineCreateCategory(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
   // Flatten all items across all categories
@@ -218,10 +257,21 @@ export default function MenuBuilderPage() {
     setFormName('');
     setFormDesc('');
     setFormPrice('');
+    setFormDiscountPercent('');
+    setFormPrepTime('15');
+    setFormMenuOutlet('e0000000-0000-0000-0000-000000000001');
     setFormCategoryId(selectedCategoryId !== 'all' ? selectedCategoryId : categories[0]?.id || '');
     setFormDietary(['Vegetarian']);
     setFormImageUrl('');
     setFormIsAvailable(true);
+    setFormPortionWiseExtras(false);
+    setFormPortions([]);
+    setFormSingleChoiceExtras(false);
+    setFormExtras([]);
+    setFormTrackQuantity(false);
+    setFormStockQuantity('');
+    setIsCategoryDropdownOpen(false);
+    setIsInlineCreateCategory(false);
     setIsAddItemModalOpen(true);
   };
 
@@ -230,11 +280,105 @@ export default function MenuBuilderPage() {
     setFormName(item.name);
     setFormDesc(item.description || '');
     setFormPrice((item.price_minor / 100).toString());
+    setFormDiscountPercent(item.discount_percent ? item.discount_percent.toString() : '');
+    setFormPrepTime(item.prep_time_minutes ? item.prep_time_minutes.toString() : '15');
     setFormCategoryId(item.category_id);
+    setFormMenuOutlet(
+      item.outlet_id === 'e0000000-0000-0000-0000-000000000002' || item.category_id?.includes('cafe')
+        ? 'e0000000-0000-0000-0000-000000000002'
+        : 'e0000000-0000-0000-0000-000000000001'
+    );
     setFormDietary(item.dietary_labels || ['Vegetarian']);
     setFormImageUrl(item.image_url || '');
     setFormIsAvailable(item.is_available);
+    setFormPortionWiseExtras(Boolean(item.portion_wise_extras));
+    setFormPortions(
+      (item.portions || []).map((p, idx) => ({
+        id: `p-${idx}-${Date.now()}`,
+        name: p.name,
+        price: (p.price_minor / 100).toString(),
+      }))
+    );
+    setFormSingleChoiceExtras(Boolean(item.single_choice_extras));
+    setFormExtras(
+      (item.extras || []).map((e, idx) => ({
+        id: `e-${idx}-${Date.now()}`,
+        name: e.name,
+        price: (e.price_minor / 100).toString(),
+      }))
+    );
+    setFormTrackQuantity(Boolean(item.track_quantity));
+    setFormStockQuantity(item.stock_quantity ? item.stock_quantity.toString() : '');
+    setIsCategoryDropdownOpen(false);
+    setIsInlineCreateCategory(false);
     setIsEditItemModalOpen(true);
+  };
+
+  const handleAddPortion = () => {
+    setFormPortions((prev) => [
+      ...prev,
+      { id: `p-${Date.now()}`, name: '', price: '' },
+    ]);
+  };
+
+  const handleRemovePortion = (id: string) => {
+    setFormPortions((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const handlePortionChange = (id: string, field: 'name' | 'price', val: string) => {
+    setFormPortions((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, [field]: val } : p))
+    );
+  };
+
+  const handleAddExtra = () => {
+    setFormExtras((prev) => [
+      ...prev,
+      { id: `e-${Date.now()}`, name: '', price: '' },
+    ]);
+  };
+
+  const handleRemoveExtra = (id: string) => {
+    setFormExtras((prev) => prev.filter((e) => e.id !== id));
+  };
+
+  const handleExtraChange = (id: string, field: 'name' | 'price', val: string) => {
+    setFormExtras((prev) =>
+      prev.map((e) => (e.id === id ? { ...e, [field]: val } : e))
+    );
+  };
+
+  const handleCreateInlineCategory = async () => {
+    if (!inlineNewCategoryName.trim()) return;
+    setInlineNewCategorySaving(true);
+    try {
+      const res = await fetch('/api/menu/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: inlineNewCategoryName.trim(),
+          outlet_id: formMenuOutlet,
+        }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const newCat = json.category;
+        await loadMenu();
+        if (newCat?.id) {
+          setFormCategoryId(newCat.id);
+        }
+        setInlineNewCategoryName('');
+        setIsInlineCreateCategory(false);
+        setIsCategoryDropdownOpen(false);
+        showToast('success', `Category "${inlineNewCategoryName.trim()}" created`);
+      } else {
+        throw new Error();
+      }
+    } catch {
+      showToast('error', 'Failed to create category');
+    } finally {
+      setInlineNewCategorySaving(false);
+    }
   };
 
   const handleDuplicateItem = async (item: MenuItem) => {
@@ -249,6 +393,10 @@ export default function MenuBuilderPage() {
           price_minor: item.price_minor,
           dietary_labels: item.dietary_labels,
           image_url: item.image_url,
+          discount_percent: item.discount_percent || 0,
+          prep_time_minutes: item.prep_time_minutes || 15,
+          portions: item.portions || [],
+          extras: item.extras || [],
         }),
       });
       if (res.ok) {
@@ -263,13 +411,50 @@ export default function MenuBuilderPage() {
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim() || !formPrice.trim() || !formCategoryId) {
-      showToast('error', 'Please fill in all required fields.');
+      showToast('error', 'Please fill in all required fields (Item Name, Category, Price).');
       return;
     }
 
     setFormSubmitting(true);
     const priceMinor = Math.round(parseFloat(formPrice) * 100);
+    const discountPct = formDiscountPercent.trim() ? Math.max(0, Math.min(100, parseFloat(formDiscountPercent))) : 0;
+    const discountPriceMinor = discountPct > 0 ? Math.round(priceMinor * (1 - discountPct / 100)) : priceMinor;
+    const prepMinutes = formPrepTime.trim() ? parseInt(formPrepTime, 10) : 15;
     const finalImageUrl = formImageUrl.trim() || '/images/food/dal-baati.jpg';
+
+    const portionsData = formPortions
+      .filter((p) => p.name.trim())
+      .map((p) => ({
+        name: p.name.trim(),
+        price_minor: Math.round(parseFloat(p.price || '0') * 100),
+      }));
+
+    const extrasData = formExtras
+      .filter((e) => e.name.trim())
+      .map((e) => ({
+        name: e.name.trim(),
+        price_minor: Math.round(parseFloat(e.price || '0') * 100),
+      }));
+
+    const payload = {
+      name: formName.trim(),
+      description: formDesc.trim(),
+      price_minor: priceMinor,
+      category_id: formCategoryId,
+      outlet_id: formMenuOutlet,
+      dietary_labels: formDietary,
+      image_url: finalImageUrl,
+      is_available: formIsAvailable,
+      discount_percent: discountPct,
+      discount_price_minor: discountPriceMinor,
+      prep_time_minutes: prepMinutes,
+      portions: portionsData,
+      extras: extrasData,
+      single_choice_extras: formSingleChoiceExtras,
+      portion_wise_extras: formPortionWiseExtras,
+      track_quantity: formTrackQuantity,
+      stock_quantity: formStockQuantity.trim() ? parseInt(formStockQuantity, 10) : 0,
+    };
 
     try {
       if (formItemId) {
@@ -277,15 +462,7 @@ export default function MenuBuilderPage() {
         const res = await fetch(`/api/menu/${formItemId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: formName.trim(),
-            description: formDesc.trim(),
-            price_minor: priceMinor,
-            category_id: formCategoryId,
-            dietary_labels: formDietary,
-            image_url: finalImageUrl,
-            is_available: formIsAvailable,
-          }),
+          body: JSON.stringify(payload),
         });
         if (res.ok) {
           showToast('success', 'Menu item updated successfully');
@@ -299,14 +476,7 @@ export default function MenuBuilderPage() {
         const res = await fetch('/api/menu', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: formName.trim(),
-            description: formDesc.trim(),
-            price_minor: priceMinor,
-            category_id: formCategoryId,
-            dietary_labels: formDietary,
-            image_url: finalImageUrl,
-          }),
+          body: JSON.stringify(payload),
         });
         if (res.ok) {
           showToast('success', 'New menu item added successfully');
@@ -792,7 +962,20 @@ export default function MenuBuilderPage() {
                           />
                         </td>
                         <td className="py-2.5 px-3">
-                          <p className="font-bold text-xs text-[#302421]">{item.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-bold text-xs text-[#302421]">{item.name}</p>
+                            {item.prep_time_minutes ? (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] text-[#64748B] bg-[#F1F5F9] px-1.5 py-0.5 rounded font-medium">
+                                <Clock className="w-2.5 h-2.5 text-[#D97706]" />
+                                {item.prep_time_minutes}m
+                              </span>
+                            ) : null}
+                            {item.discount_percent && item.discount_percent > 0 ? (
+                              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                -{item.discount_percent}%
+                              </span>
+                            ) : null}
+                          </div>
                           <p className="text-[11px] text-[#81736D] truncate max-w-[260px]">
                             {item.description || 'Traditional royal delicacy prepared by royal khansama.'}
                           </p>
@@ -802,8 +985,21 @@ export default function MenuBuilderPage() {
                             {item.categoryName}
                           </span>
                         </td>
-                        <td className="py-2.5 px-3 font-bold text-xs text-[#302421]">
-                          ₹{(item.price_minor / 100).toFixed(2)}
+                        <td className="py-2.5 px-3">
+                          {item.discount_percent && item.discount_percent > 0 ? (
+                            <div className="flex flex-col">
+                              <span className="font-bold text-xs text-[#302421]">
+                                ₹{(item.discount_price_minor ? item.discount_price_minor / 100 : (item.price_minor * (1 - item.discount_percent / 100)) / 100).toFixed(2)}
+                              </span>
+                              <span className="text-[10px] text-[#81736D] line-through">
+                                ₹{(item.price_minor / 100).toFixed(2)}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="font-bold text-xs text-[#302421]">
+                              ₹{(item.price_minor / 100).toFixed(2)}
+                            </span>
+                          )}
                         </td>
                         <td className="py-2.5 px-3">
                           {/* Live Toggle Switch matching Screenshot */}
@@ -910,115 +1106,170 @@ export default function MenuBuilderPage() {
         </div>
       </div>
 
-      {/* ── Modal: Add / Edit Item ── */}
+      {/* ── Modal: Add / Edit Item (Matching reference screenshots) ── */}
       {(isAddItemModalOpen || isEditItemModalOpen) && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-[#E8DCD2] max-w-lg w-full p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-[#E8DCD2] pb-3">
-              <h2
-                className="text-lg font-bold text-[#4F0809]"
-                style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
-              >
-                {formItemId ? 'Edit Menu Item' : 'Add New Menu Item'}
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl border border-[#E2E8F0] max-w-md w-full shadow-2xl flex flex-col max-h-[92vh] overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4.5 border-b border-[#F1F5F9] shrink-0">
+              <h2 className="text-xl font-bold text-[#1E293B] tracking-tight">
+                {formItemId ? 'Edit Menu Item' : 'Add Menu Item'}
               </h2>
               <button
+                type="button"
                 onClick={() => {
                   setIsAddItemModalOpen(false);
                   setIsEditItemModalOpen(false);
                 }}
-                className="p-1 rounded-full text-[#81736D] hover:text-[#4F0809] hover:bg-[#FBF6EF]"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-[#64748B] hover:text-[#0F172A] hover:bg-[#F1F5F9] transition cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveItem} className="space-y-3.5 text-xs">
+            {/* Modal Scrollable Body */}
+            <form onSubmit={handleSaveItem} className="flex-1 overflow-y-auto px-6 py-4 space-y-4 text-xs">
+              {/* Menu * */}
               <div>
-                <label className="block text-[11px] font-semibold text-[#4F0809] mb-1">
-                  Dish / Item Name *
+                <label className="block text-xs font-semibold text-[#1E293B] mb-1.5">
+                  Menu <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <select
+                    value={formMenuOutlet}
+                    onChange={(e) => setFormMenuOutlet(e.target.value as any)}
+                    className="w-full appearance-none px-3.5 py-2.5 rounded-xl border border-[#CBD5E1] bg-white text-xs font-medium text-[#1E293B] focus:border-[#4F0809] focus:outline-none pr-9 cursor-pointer shadow-xs"
+                  >
+                    <option value="e0000000-0000-0000-0000-000000000001">Main Menu (Restaurant)</option>
+                    <option value="e0000000-0000-0000-0000-000000000002">The Palace Courtyard Café &amp; Lounge</option>
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-[#64748B] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* Category * with Dropdown & Inline Create Category */}
+              <div className="relative" ref={categoryDropdownRef}>
+                <label className="block text-xs font-semibold text-[#1E293B] mb-1.5">
+                  Category <span className="text-rose-500">*</span>
+                </label>
+                
+                {/* Trigger button */}
+                <button
+                  type="button"
+                  onClick={() => setIsCategoryDropdownOpen((prev) => !prev)}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl border text-xs font-medium transition cursor-pointer shadow-xs ${
+                    isCategoryDropdownOpen
+                      ? 'border-[#2563EB] ring-2 ring-[#2563EB]/20 bg-white'
+                      : 'border-[#CBD5E1] bg-white hover:border-[#94A3B8] text-[#1E293B]'
+                  }`}
+                >
+                  <span className={formCategoryId ? 'text-[#1E293B] font-semibold' : 'text-[#94A3B8]'}>
+                    {categories.find((c) => c.id === formCategoryId)?.name || 'Select Category'}
+                  </span>
+                  {isCategoryDropdownOpen ? (
+                    <ChevronUp className="w-4 h-4 text-[#2563EB]" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-[#64748B]" />
+                  )}
+                </button>
+
+                {/* Dropdown Menu matching Screenshot 2 */}
+                {isCategoryDropdownOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-1 z-30 bg-white border border-[#CBD5E1] rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-150">
+                    {/* Inline Create Category Form or Link */}
+                    {isInlineCreateCategory ? (
+                      <div className="p-3 bg-[#F8FAFC] border-b border-[#E2E8F0] space-y-2">
+                        <p className="text-[11px] font-bold text-[#1E293B]">New Category Name</p>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={inlineNewCategoryName}
+                            onChange={(e) => setInlineNewCategoryName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleCreateInlineCategory();
+                              }
+                            }}
+                            placeholder="e.g. Traditional Breads"
+                            className="flex-1 px-2.5 py-1.5 text-xs rounded-lg border border-[#CBD5E1] bg-white focus:outline-none focus:border-[#2563EB]"
+                          />
+                          <button
+                            type="button"
+                            disabled={inlineNewCategorySaving || !inlineNewCategoryName.trim()}
+                            onClick={handleCreateInlineCategory}
+                            className="px-3 py-1.5 rounded-lg bg-[#2563EB] text-white text-xs font-semibold hover:bg-[#1D4ED8] disabled:opacity-50 transition cursor-pointer"
+                          >
+                            {inlineNewCategorySaving ? 'Saving...' : 'Add'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsInlineCreateCategory(false)}
+                            className="px-2 py-1.5 rounded-lg border border-[#CBD5E1] text-[#64748B] hover:bg-white text-xs cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setIsInlineCreateCategory(true)}
+                        className="w-full text-left px-4 py-2.5 text-xs font-semibold text-[#2563EB] hover:bg-[#EFF6FF] border-b border-[#F1F5F9] flex items-center gap-1.5 transition cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4 text-[#2563EB]" />
+                        <span>Create Category</span>
+                      </button>
+                    )}
+
+                    {/* Category List */}
+                    <div className="max-h-48 overflow-y-auto divide-y divide-[#F1F5F9]">
+                      {categories.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => {
+                            setFormCategoryId(c.id);
+                            setIsCategoryDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-4 py-2.5 text-xs hover:bg-[#F8FAFC] transition flex items-center justify-between cursor-pointer ${
+                            formCategoryId === c.id ? 'bg-[#F0FDF4] font-bold text-[#15803D]' : 'text-[#334155]'
+                          }`}
+                        >
+                          <span>{c.name}</span>
+                          {formCategoryId === c.id && <Check className="w-3.5 h-3.5 text-[#15803D]" />}
+                        </button>
+                      ))}
+                      {categories.length === 0 && (
+                        <div className="px-4 py-3 text-center text-[#94A3B8]">
+                          No categories yet. Click "+ Create Category" above.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Item Name * */}
+              <div>
+                <label className="block text-xs font-semibold text-[#1E293B] mb-1.5">
+                  Item Name <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  placeholder="e.g. Paneer Tikka Angara"
-                  className="w-full px-3 py-2 rounded-xl border border-[#E8DCD2] bg-[#FBF6EF]/50 focus:bg-white focus:outline-none focus:border-[#4F0809]"
+                  placeholder="Item Name *"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#CBD5E1] bg-white text-xs font-medium text-[#1E293B] focus:border-[#4F0809] focus:outline-none shadow-xs"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-semibold text-[#4F0809] mb-1">
-                    Category *
-                  </label>
-                  <select
-                    required
-                    value={formCategoryId}
-                    onChange={(e) => setFormCategoryId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#E8DCD2] bg-[#FBF6EF]/50 focus:bg-white focus:outline-none focus:border-[#4F0809]"
-                  >
-                    <option value="" disabled>
-                      Select Category
-                    </option>
-                    {categories.length > 0 ? (
-                      categories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} {c.outlet_id?.includes('2') || c.id.includes('cafe') ? '(Café)' : '(Restaurant)'}
-                        </option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="cat-1">Royal Starters &amp; Tandoor (Restaurant)</option>
-                        <option value="cat-2">Royal Thalis &amp; Feasts (Restaurant)</option>
-                        <option value="cat-3">Mewari Royal Mains (Restaurant)</option>
-                        <option value="cat-4">Royal Breads &amp; Desserts (Restaurant)</option>
-                        <option value="cat-cafe-1">Artisanal Brews &amp; Bites (Café)</option>
-                        <option value="cat-cafe-2">Palace Bakery &amp; Desserts (Café)</option>
-                      </>
-                    )}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-[#4F0809] mb-1">
-                    Price (INR ₹) *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={formPrice}
-                    onChange={(e) => setFormPrice(e.target.value)}
-                    placeholder="e.g. 250.00"
-                    className="w-full px-3 py-2 rounded-xl border border-[#E8DCD2] bg-[#FBF6EF]/50 focus:bg-white focus:outline-none focus:border-[#4F0809]"
-                  />
-                </div>
-              </div>
-
+              {/* Item Photo Box */}
               <div>
-                <label className="block text-[11px] font-semibold text-[#4F0809] mb-1">
-                  Description
-                </label>
-                <textarea
-                  rows={2}
-                  value={formDesc}
-                  onChange={(e) => setFormDesc(e.target.value)}
-                  placeholder="Describe ingredients, cooking style, or flavor profile..."
-                  className="w-full px-3 py-2 rounded-xl border border-[#E8DCD2] bg-[#FBF6EF]/50 focus:bg-white focus:outline-none focus:border-[#4F0809]"
-                />
-              </div>
-
-              {/* Image Upload Option */}
-              <div>
-                <label className="block text-[11px] font-semibold text-[#4F0809] mb-1.5 flex items-center justify-between">
-                  <span>Dish Photo / Image *</span>
-                  {formImageUrl && (
-                    <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                      Image Selected
-                    </span>
-                  )}
+                <label className="block text-xs font-semibold text-[#1E293B] mb-1.5">
+                  Item Photo
                 </label>
 
                 {/* Hidden File Input */}
@@ -1034,50 +1285,41 @@ export default function MenuBuilderPage() {
                 />
 
                 {formImageUrl ? (
-                  <div className="border border-[#E8DCD2] rounded-xl p-3 bg-[#FBF6EF]/40 flex items-center gap-3">
-                    <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-[#E8DCD2] shadow-2xs shrink-0 bg-white">
+                  <div className="relative rounded-2xl overflow-hidden border border-[#CBD5E1] group bg-[#F8FAFC]">
+                    <div className="h-44 w-full overflow-hidden flex items-center justify-center bg-gray-50">
                       <img
                         src={formImageUrl}
-                        alt="Dish Preview"
+                        alt="Menu Item Preview"
                         className="w-full h-full object-cover"
                         onError={(e) => {
                           (e.currentTarget as HTMLImageElement).src = '/images/food/dal-baati.jpg';
                         }}
                       />
-                      {isUploadingImage && (
-                        <div className="absolute inset-0 bg-black/40 backdrop-blur-2xs flex items-center justify-center">
-                          <RefreshCw className="w-4 h-4 text-white animate-spin" />
-                        </div>
-                      )}
                     </div>
-
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-[#302421] truncate">
-                        {formImageUrl.startsWith('data:') ? 'Custom Uploaded Photo' : formImageUrl.split('/').pop()}
-                      </p>
-                      <p className="text-[10px] text-[#81736D] mt-0.5">
-                        {isUploadingImage ? 'Uploading photo...' : 'Ready for menu display'}
-                      </p>
-
-                      <div className="flex items-center gap-2 mt-2">
-                        <button
-                          type="button"
-                          disabled={isUploadingImage}
-                          onClick={() => fileInputRef.current?.click()}
-                          className="px-2.5 py-1 rounded-lg bg-white border border-[#E8DCD2] text-[#4F0809] hover:bg-[#FBF6EF] text-[11px] font-semibold shadow-2xs flex items-center gap-1 transition cursor-pointer"
-                        >
-                          <Upload className="w-3 h-3 text-[#B78A48]" />
-                          <span>Change Photo</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setFormImageUrl('')}
-                          className="px-2.5 py-1 rounded-lg hover:bg-red-50 text-red-600 text-[11px] font-semibold flex items-center gap-1 transition cursor-pointer"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          <span>Remove</span>
-                        </button>
+                    {isUploadingImage && (
+                      <div className="absolute inset-0 bg-black/40 backdrop-blur-2xs flex items-center justify-center text-white text-xs font-semibold gap-2">
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Uploading photo...
                       </div>
+                    )}
+                    <div className="absolute bottom-2 right-2 flex items-center gap-1.5 bg-black/60 backdrop-blur-xs p-1.5 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploadingImage}
+                        className="px-2 py-1 rounded-lg bg-white/90 hover:bg-white text-[#1E293B] text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition shadow-xs"
+                      >
+                        <Upload className="w-3 h-3 text-[#2563EB]" />
+                        <span>Change</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormImageUrl('')}
+                        className="px-2 py-1 rounded-lg bg-red-600/90 hover:bg-red-600 text-white text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition shadow-xs"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Remove</span>
+                      </button>
                     </div>
                   </div>
                 ) : (
@@ -1094,31 +1336,31 @@ export default function MenuBuilderPage() {
                       if (file) handleImageFileChange(file);
                     }}
                     onClick={() => fileInputRef.current?.click()}
-                    className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+                    className={`h-40 rounded-2xl border border-dashed flex flex-col items-center justify-center cursor-pointer transition-all ${
                       dragOver
-                        ? 'border-[#4F0809] bg-[#FBF6EF]'
-                        : 'border-[#E8DCD2] hover:border-[#B78A48] bg-[#FBF6EF]/30 hover:bg-[#FBF6EF]/60'
+                        ? 'border-[#2563EB] bg-[#EFF6FF]'
+                        : 'border-[#CBD5E1] bg-[#F8FAFC] hover:bg-[#F1F5F9] hover:border-[#94A3B8]'
                     }`}
                   >
-                    <div className="w-9 h-9 rounded-full bg-white border border-[#E8DCD2] text-[#B78A48] flex items-center justify-center mx-auto mb-1.5 shadow-2xs">
+                    <div className="flex flex-col items-center gap-1.5 text-[#64748B]">
                       {isUploadingImage ? (
-                        <RefreshCw className="w-4 h-4 animate-spin text-[#4F0809]" />
+                        <>
+                          <RefreshCw className="w-6 h-6 animate-spin text-[#2563EB]" />
+                          <span className="text-xs font-semibold text-[#1E293B]">Uploading photo...</span>
+                        </>
                       ) : (
-                        <Upload className="w-4 h-4" />
+                        <>
+                          <Plus className="w-6 h-6 text-[#64748B]" />
+                          <span className="text-xs font-medium text-[#64748B]">Add Photo</span>
+                        </>
                       )}
                     </div>
-                    <p className="text-xs font-bold text-[#4F0809]">
-                      {isUploadingImage ? 'Uploading Image...' : 'Click to Upload Food Image'}
-                    </p>
-                    <p className="text-[10px] text-[#81736D] mt-0.5">
-                      or drag &amp; drop file here (PNG, JPG, WebP up to 10MB)
-                    </p>
                   </div>
                 )}
 
-                {/* Quick Presets for Hotel Menu */}
-                <div className="mt-2 flex items-center gap-1.5 overflow-x-auto pb-1 text-[10px] text-[#81736D]">
-                  <span className="shrink-0 font-medium text-[#4F0809]">Quick select:</span>
+                {/* Quick Presets */}
+                <div className="mt-2 flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[10px] text-[#64748B]">
+                  <span className="shrink-0 font-medium">Quick select:</span>
                   {[
                     { label: 'Dal Baati', url: '/images/food/dal-baati.jpg' },
                     { label: 'Laal Maas', url: '/images/food/laal-maas.jpg' },
@@ -1129,7 +1371,7 @@ export default function MenuBuilderPage() {
                       key={preset.url}
                       type="button"
                       onClick={() => setFormImageUrl(preset.url)}
-                      className="px-2 py-0.5 rounded-full border border-[#E8DCD2] bg-white hover:bg-[#FBF6EF] text-[#302421] shrink-0 font-medium transition cursor-pointer"
+                      className="px-2 py-0.5 rounded-full border border-[#E2E8F0] bg-white hover:bg-[#F8FAFC] text-[#334155] shrink-0 font-medium transition cursor-pointer"
                     >
                       {preset.label}
                     </button>
@@ -1137,43 +1379,370 @@ export default function MenuBuilderPage() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-[#E8DCD2]">
-                <label className="flex items-center gap-2 text-xs font-semibold text-[#302421] cursor-pointer">
+              {/* Price (₹) * */}
+              <div>
+                <label className="block text-xs font-semibold text-[#1E293B] mb-1.5">
+                  Price (₹) <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-[#64748B]">
+                    ₹
+                  </span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={formPrice}
+                    onChange={(e) => setFormPrice(e.target.value)}
+                    placeholder="e.g. 350.00"
+                    className="w-full pl-8 pr-3.5 py-2.5 rounded-xl border border-[#CBD5E1] bg-white text-xs font-bold text-[#1E293B] focus:border-[#4F0809] focus:outline-none shadow-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Discount (%) & Preparation Time (mins) - USER REQUESTED FIELDS */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0]">
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#1E293B] mb-1 flex items-center gap-1">
+                    <Percent className="w-3 h-3 text-[#2563EB]" />
+                    <span>Discount (%)</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={formDiscountPercent}
+                    onChange={(e) => setFormDiscountPercent(e.target.value)}
+                    placeholder="e.g. 10"
+                    className="w-full px-3 py-2 rounded-xl border border-[#CBD5E1] bg-white text-xs font-semibold text-[#1E293B] focus:border-[#2563EB] focus:outline-none"
+                  />
+                  {formPrice && parseFloat(formDiscountPercent) > 0 && (
+                    <p className="text-[10px] text-emerald-700 font-semibold mt-1">
+                      Final: ₹{(parseFloat(formPrice) * (1 - Math.min(100, Math.max(0, parseFloat(formDiscountPercent))) / 100)).toFixed(2)} ({formDiscountPercent}% OFF)
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#1E293B] mb-1 flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-[#D97706]" />
+                    <span>Prep Time (mins)</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={formPrepTime}
+                    onChange={(e) => setFormPrepTime(e.target.value)}
+                    placeholder="e.g. 15"
+                    className="w-full px-3 py-2 rounded-xl border border-[#CBD5E1] bg-white text-xs font-semibold text-[#1E293B] focus:border-[#D97706] focus:outline-none"
+                  />
+                  <p className="text-[10px] text-[#64748B] mt-1">Kitchen prep estimate</p>
+                </div>
+              </div>
+
+              {/* Food Dietary Type */}
+              <div>
+                <label className="block text-xs font-semibold text-[#1E293B] mb-1.5">
+                  Dietary Classification
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: 'Vegetarian', color: 'border-emerald-500 bg-emerald-50 text-emerald-700' },
+                    { label: 'Non-Vegetarian', color: 'border-rose-500 bg-rose-50 text-rose-700' },
+                    { label: 'Contains Egg', color: 'border-amber-500 bg-amber-50 text-amber-700' },
+                    { label: 'Vegan', color: 'border-teal-500 bg-teal-50 text-teal-700' },
+                  ].map((diet) => {
+                    const isSelected = formDietary.includes(diet.label);
+                    return (
+                      <button
+                        key={diet.label}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) {
+                            setFormDietary(formDietary.filter((d) => d !== diet.label));
+                          } else {
+                            setFormDietary([...formDietary, diet.label]);
+                          }
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition cursor-pointer ${
+                          isSelected
+                            ? diet.color + ' ring-1'
+                            : 'border-[#CBD5E1] bg-white text-[#64748B] hover:bg-[#F8FAFC]'
+                        }`}
+                      >
+                        {diet.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-xs font-semibold text-[#1E293B] mb-1.5">
+                  Description
+                </label>
+                <textarea
+                  rows={2}
+                  value={formDesc}
+                  onChange={(e) => setFormDesc(e.target.value)}
+                  placeholder="Describe ingredients, cooking style, or flavor profile..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#CBD5E1] bg-white text-xs font-normal text-[#1E293B] focus:border-[#4F0809] focus:outline-none shadow-xs"
+                />
+              </div>
+
+              {/* Portion-wise Extras */}
+              <div className="pt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#1E293B]">Portion-wise Extras</span>
+                  {/* Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setFormPortionWiseExtras((prev) => !prev)}
+                    className={`w-10 h-5 rounded-full transition-colors relative p-0.5 cursor-pointer ${
+                      formPortionWiseExtras ? 'bg-[#2563EB]' : 'bg-[#CBD5E1]'
+                    }`}
+                  >
+                    <div
+                      className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                        formPortionWiseExtras ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+                <p className="text-[11px] text-[#64748B] mt-1">
+                  Each portion gets its own add-ons with their own prices (e.g. Extra Cheese: R +₹30, M +₹50).
+                </p>
+              </div>
+
+              {/* Portions (optional) */}
+              <div className="pt-2 space-y-2">
+                <div>
+                  <h4 className="text-xs font-bold text-[#1E293B]">Portions (optional)</h4>
+                  <p className="text-[11px] text-[#64748B] mt-0.5">
+                    e.g. Half plate ₹100 / Full plate ₹200. Customers must pick one. The first portion's price becomes the item's base price.
+                  </p>
+                </div>
+
+                {/* Portions list */}
+                {formPortions.map((p, idx) => (
+                  <div key={p.id} className="flex items-center gap-2 bg-[#F8FAFC] p-2 rounded-xl border border-[#E2E8F0]">
+                    <span className="text-[10px] font-bold text-[#64748B] w-4">{idx + 1}.</span>
+                    <input
+                      type="text"
+                      placeholder="Portion name (e.g. Half / Full)"
+                      value={p.name}
+                      onChange={(e) => handlePortionChange(p.id, 'name', e.target.value)}
+                      className="flex-1 px-2.5 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-xs font-medium focus:outline-none focus:border-[#2563EB]"
+                    />
+                    <div className="relative w-28">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-[#64748B]">₹</span>
+                      <input
+                        type="number"
+                        placeholder="Price"
+                        value={p.price}
+                        onChange={(e) => handlePortionChange(p.id, 'price', e.target.value)}
+                        className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-xs font-bold focus:outline-none focus:border-[#2563EB]"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePortion(p.id)}
+                      className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-500 transition cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={handleAddPortion}
+                  className="w-full py-2 rounded-xl border border-[#CBD5E1] text-[#2563EB] hover:bg-[#EFF6FF] text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Portion</span>
+                </button>
+              </div>
+
+              {/* Extras (optional) */}
+              <div className="pt-2 space-y-2">
+                <div>
+                  <h4 className="text-xs font-bold text-[#1E293B]">Extras (optional)</h4>
+                  <p className="text-[11px] text-[#64748B] mt-0.5">
+                    Priced add-ons customers can pick, e.g. Extra gravy +₹30, Salad +₹20.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-xs font-medium text-[#1E293B]">Single-choice Extras</span>
+                  <button
+                    type="button"
+                    onClick={() => setFormSingleChoiceExtras((prev) => !prev)}
+                    className={`w-10 h-5 rounded-full transition-colors relative p-0.5 cursor-pointer ${
+                      formSingleChoiceExtras ? 'bg-[#2563EB]' : 'bg-[#CBD5E1]'
+                    }`}
+                  >
+                    <div
+                      className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                        formSingleChoiceExtras ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Extras list */}
+                {formExtras.map((extraItem, idx) => (
+                  <div key={extraItem.id} className="flex items-center gap-2 bg-[#F8FAFC] p-2 rounded-xl border border-[#E2E8F0]">
+                    <span className="text-[10px] font-bold text-[#64748B] w-4">{idx + 1}.</span>
+                    <input
+                      type="text"
+                      placeholder="Extra name (e.g. Cheese, Gravy)"
+                      value={extraItem.name}
+                      onChange={(e) => handleExtraChange(extraItem.id, 'name', e.target.value)}
+                      className="flex-1 px-2.5 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-xs font-medium focus:outline-none focus:border-[#2563EB]"
+                    />
+                    <div className="relative w-28">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-[#64748B]">₹</span>
+                      <input
+                        type="number"
+                        placeholder="Price"
+                        value={extraItem.price}
+                        onChange={(e) => handleExtraChange(extraItem.id, 'price', e.target.value)}
+                        className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-xs font-bold focus:outline-none focus:border-[#2563EB]"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveExtra(extraItem.id)}
+                      className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-500 transition cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={handleAddExtra}
+                  className="w-full py-2 rounded-xl border border-[#CBD5E1] text-[#2563EB] hover:bg-[#EFF6FF] text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Extra</span>
+                </button>
+              </div>
+
+              {/* Horizontal line */}
+              <div className="border-t border-[#E2E8F0] my-2" />
+
+              {/* Stock Settings */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-[#1E293B]">Stock Settings</h4>
+                
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-[#1E293B]">Track Quantity</p>
+                    <p className="text-[11px] text-[#64748B]">
+                      {formTrackQuantity ? 'Track Qty on' : 'Track Qty off'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormTrackQuantity((prev) => !prev)}
+                    className={`w-10 h-5 rounded-full transition-colors relative p-0.5 cursor-pointer ${
+                      formTrackQuantity ? 'bg-[#2563EB]' : 'bg-[#CBD5E1]'
+                    }`}
+                  >
+                    <div
+                      className={`w-4 h-4 rounded-full bg-white transition-transform ${
+                        formTrackQuantity ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {formTrackQuantity && (
+                  <div className="bg-[#F8FAFC] p-2.5 rounded-xl border border-[#E2E8F0]">
+                    <label className="block text-[11px] font-semibold text-[#1E293B] mb-1">
+                      Available Stock Units
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formStockQuantity}
+                      onChange={(e) => setFormStockQuantity(e.target.value)}
+                      placeholder="e.g. 50"
+                      className="w-full px-3 py-1.5 rounded-lg border border-[#CBD5E1] bg-white text-xs font-medium focus:outline-none focus:border-[#2563EB]"
+                    />
+                  </div>
+                )}
+
+                {/* In Stock Checkbox */}
+                <label className="flex items-center gap-2 text-xs font-medium text-[#1E293B] cursor-pointer">
                   <input
                     type="checkbox"
                     checked={formIsAvailable}
                     onChange={(e) => setFormIsAvailable(e.target.checked)}
-                    className="w-4 h-4 rounded text-[#4F0809] accent-[#4F0809]"
+                    className="w-4 h-4 rounded text-[#2563EB] accent-[#2563EB]"
                   />
-                  <span>Mark as Available for Order</span>
+                  <span>In Stock</span>
                 </label>
+              </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAddItemModalOpen(false);
-                      setIsEditItemModalOpen(false);
-                    }}
-                    className="px-4 py-2 rounded-xl border border-[#E8DCD2] text-[#81736D] hover:bg-[#FBF6EF] font-semibold"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={formSubmitting}
-                    className="px-4 py-2 rounded-xl bg-[#4F0809] hover:bg-[#680b0c] text-white font-semibold flex items-center gap-1.5"
-                  >
-                    {formSubmitting ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>Saving...</span>
-                      </>
-                    ) : (
-                      <span>Save Item</span>
-                    )}
-                  </button>
+              {/* Horizontal line */}
+              <div className="border-t border-[#E2E8F0] my-2" />
+
+              {/* Raw Materials */}
+              <div className="space-y-2">
+                <div>
+                  <h4 className="text-xs font-bold text-[#1E293B]">Raw Materials</h4>
+                  <p className="text-[11px] text-[#64748B]">(Recipe/Ingredients)</p>
                 </div>
+                <p className="text-[11px] text-[#64748B]">
+                  Define raw materials needed to prepare this dish
+                </p>
+                <p className="text-[11px] font-medium text-rose-500">
+                  No raw materials found. Add materials in Raw Materials screen first.
+                </p>
+                <Link
+                  href="/dashboard/inventory"
+                  className="w-full py-2.5 rounded-xl border border-[#CBD5E1] text-[#334155] hover:bg-[#F8FAFC] text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  <ArrowRight className="w-3.5 h-3.5 text-[#334155]" />
+                  <span>Go to Raw Materials</span>
+                </Link>
+              </div>
+
+              {/* Form Bottom Spacing */}
+              <div className="h-2" />
+
+              {/* Modal Footer (Sticky or Bottom) */}
+              <div className="pt-3 border-t border-[#E2E8F0] flex items-center justify-end gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddItemModalOpen(false);
+                    setIsEditItemModalOpen(false);
+                  }}
+                  className="px-5 py-2.5 rounded-xl text-xs font-semibold text-[#64748B] hover:text-[#1E293B] hover:bg-[#F1F5F9] transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={formSubmitting}
+                  className="px-6 py-2.5 rounded-xl bg-[#4F0809] hover:bg-[#680b0c] text-white text-xs font-semibold shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-60"
+                >
+                  {formSubmitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <span>Save</span>
+                  )}
+                </button>
               </div>
             </form>
           </div>

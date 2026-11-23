@@ -197,6 +197,7 @@ export interface MenuCategory {
 export interface MenuItem {
   id: string;
   category_id: string;
+  outlet_id?: string;
   name: string;
   description: string | null;
   price_minor: number;
@@ -205,6 +206,15 @@ export interface MenuItem {
   dietary_labels: string[];
   sort_order: number;
   modifiers?: Modifier[];
+  discount_percent?: number;
+  discount_price_minor?: number;
+  prep_time_minutes?: number;
+  portions?: Array<{ name: string; price_minor: number }>;
+  extras?: Array<{ name: string; price_minor: number }>;
+  single_choice_extras?: boolean;
+  portion_wise_extras?: boolean;
+  track_quantity?: boolean;
+  stock_quantity?: number;
 }
 
 // ── Modifier ──
