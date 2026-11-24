@@ -5,6 +5,7 @@ import {
   getDoc,
   addDoc,
   updateDoc,
+  deleteDoc,
   query,
   where,
   serverTimestamp,
@@ -46,14 +47,24 @@ export const roomsService = {
   },
 
   async getRooms(): Promise<Room[]> {
+    const roomTypes = dataRepository.getRoomTypes();
     try {
       const colRef = collection(db, 'rooms');
       const snap = await getDocs(colRef);
       if (!snap.empty) {
-        return snap.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        })) as Room[];
+        return snap.docs.map((d) => {
+          const data = d.data();
+          const typeId = data.room_type_id || roomTypes[0]?.id;
+          const matchedType = roomTypes.find((rt) => rt.id === typeId) || roomTypes[0];
+          return {
+            id: d.id,
+            room_number: data.room_number,
+            room_type_id: typeId,
+            housekeeping_state: data.housekeeping_state || 'available',
+            notes: data.notes || null,
+            room_type: data.room_type || matchedType,
+          } as Room;
+        });
       }
     } catch (err) {
       console.warn('Firestore getRooms fallback:', err);
@@ -67,17 +78,23 @@ export const roomsService = {
     housekeeping_state: HousekeepingState;
     notes?: string | null;
   }): Promise<Room> {
+    const roomTypes = dataRepository.getRoomTypes();
+    const matchedType = roomTypes.find((rt) => rt.id === roomData.room_type_id) || roomTypes[0];
+
     try {
       const colRef = collection(db, 'rooms');
       const docRef = await addDoc(colRef, {
         ...roomData,
+        room_type_id: matchedType.id,
+        room_type_name: matchedType.name,
         created_at: serverTimestamp(),
       });
-      const local = dataRepository.addRoom(roomData);
-      return { ...local, id: docRef.id };
+      const local = dataRepository.addRoom({ ...roomData, room_type_id: matchedType.id, room_type: matchedType });
+      return { ...local, id: docRef.id, room_type: matchedType };
     } catch (err) {
       console.warn('Firestore addRoom error:', err);
-      return dataRepository.addRoom(roomData);
+      const local = dataRepository.addRoom({ ...roomData, room_type_id: matchedType.id, room_type: matchedType });
+      return { ...local, room_type: matchedType };
     }
   },
 
@@ -92,6 +109,16 @@ export const roomsService = {
       console.warn('Firestore updateRoomHousekeeping fallback:', err);
     }
     return dataRepository.updateRoomHousekeeping(roomId, state);
+  },
+
+  async deleteRoom(roomId: string): Promise<boolean> {
+    try {
+      const docRef = doc(db, 'rooms', roomId);
+      await deleteDoc(docRef);
+    } catch (err) {
+      console.warn('Firestore deleteRoom fallback:', err);
+    }
+    return dataRepository.deleteRoom(roomId);
   },
 
   async searchAvailability(checkIn: string, checkOut: string, guests: number): Promise<AvailabilityResult[]> {

@@ -27,6 +27,7 @@ export default function RoomsHousekeepingPage() {
   const [filterState, setFilterState] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Add room modal
@@ -36,37 +37,86 @@ export default function RoomsHousekeepingPage() {
   const [newRoomState, setNewRoomState] = useState<HousekeepingState>('available');
   const [newRoomNotes, setNewRoomNotes] = useState('');
 
+  const fetchRoomsData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/rooms');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.rooms && Array.isArray(data.rooms)) {
+          setRooms(data.rooms);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('rajmahal_rooms', JSON.stringify(data.rooms));
+          }
+        }
+        if (data.roomTypes && Array.isArray(data.roomTypes)) {
+          setRoomTypes(data.roomTypes);
+          if (!newRoomTypeId && data.roomTypes.length > 0) {
+            setNewRoomTypeId(data.roomTypes[0].id);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching /api/rooms:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [newRoomTypeId]);
+
   useEffect(() => {
-    // Clear legacy localStorage
+    // 1. Initial hydration from cache and repository
+    const initialTypes = dataRepository.getRoomTypes();
+    setRoomTypes(initialTypes);
+    if (initialTypes.length > 0) {
+      setNewRoomTypeId(initialTypes[0].id);
+    }
+
     if (typeof window !== 'undefined') {
       try {
-        window.localStorage.removeItem('dashboard_rooms');
-      } catch {}
+        const cached = localStorage.getItem('rajmahal_rooms');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setRooms(parsed);
+          } else {
+            setRooms(dataRepository.getRooms());
+          }
+        } else {
+          setRooms(dataRepository.getRooms());
+        }
+      } catch {
+        setRooms(dataRepository.getRooms());
+      }
+    } else {
+      setRooms(dataRepository.getRooms());
     }
 
-    setRoomTypes(dataRepository.getRoomTypes());
-    const rts = dataRepository.getRoomTypes();
-    if (rts.length > 0 && !newRoomTypeId) {
-      setNewRoomTypeId(rts[0].id);
-    }
+    // 2. Fetch live data from /api/rooms
+    fetchRoomsData();
 
+    // 3. Subscribe to Firestore updates
     const unsubRooms = onSnapshot(
       collection(db, 'rooms'),
       (snap) => {
         if (!snap.empty) {
-          setRooms(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Room[]);
-        } else {
-          setRooms(dataRepository.getRooms());
-        }
-      },
-      () => setRooms(dataRepository.getRooms())
-    );
-
-    const unsubTypes = onSnapshot(
-      collection(db, 'room_types'),
-      (snap) => {
-        if (!snap.empty) {
-          setRoomTypes(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as RoomType[]);
+          const rts = dataRepository.getRoomTypes();
+          const liveRooms = snap.docs.map((d) => {
+            const data = d.data();
+            const typeId = data.room_type_id || rts[0]?.id;
+            const matchedType = rts.find((rt) => rt.id === typeId) || rts[0];
+            return {
+              id: d.id,
+              room_number: data.room_number,
+              room_type_id: typeId,
+              housekeeping_state: data.housekeeping_state || 'available',
+              notes: data.notes || null,
+              room_type: data.room_type || matchedType,
+            } as Room;
+          });
+          setRooms(liveRooms);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('rajmahal_rooms', JSON.stringify(liveRooms));
+          }
         }
       },
       () => {}
@@ -74,15 +124,18 @@ export default function RoomsHousekeepingPage() {
 
     return () => {
       unsubRooms();
-      unsubTypes();
     };
-  }, []);
-
-  const fetchRoomsData = useCallback(() => {
-    // Maintained for manual reload
-  }, []);
+  }, [fetchRoomsData]);
 
   const handleStateChange = async (roomId: string, newState: HousekeepingState) => {
+    setRooms((prev) => {
+      const updated = prev.map((r) => (r.id === roomId ? { ...r, housekeeping_state: newState } : r));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('rajmahal_rooms', JSON.stringify(updated));
+      }
+      return updated;
+    });
+
     try {
       await roomsService.updateRoomHousekeeping(roomId, newState);
     } catch {
@@ -90,36 +143,79 @@ export default function RoomsHousekeepingPage() {
     }
   };
 
-  const handleDeleteRoom = (roomId: string, roomNumber: string) => {
+  const handleDeleteRoom = async (roomId: string, roomNumber: string) => {
     if (window.confirm(`Are you sure you want to delete Room ${roomNumber}?`)) {
-      dataRepository.deleteRoom(roomId);
+      setRooms((prev) => {
+        const updated = prev.filter((r) => r.id !== roomId);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('rajmahal_rooms', JSON.stringify(updated));
+        }
+        return updated;
+      });
+
+      try {
+        await fetch(`/api/rooms?id=${roomId}`, { method: 'DELETE' });
+      } catch {
+        dataRepository.deleteRoom(roomId);
+      }
     }
   };
 
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newRoomNumber || !newRoomTypeId) return;
+    if (!newRoomNumber.trim()) return;
+
+    setIsSubmitting(true);
+    setActionError(null);
+
+    const cleanNum = newRoomNumber.trim().replace(/^(room|chamber)\s*/i, '');
+    const matchedType = roomTypes.find((rt) => rt.id === newRoomTypeId) || roomTypes[0];
 
     try {
-      await roomsService.addRoom({
-        room_number: newRoomNumber.trim(),
-        room_type_id: newRoomTypeId,
-        housekeeping_state: newRoomState,
-        notes: newRoomNotes || null,
+      const res = await fetch('/api/rooms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room_number: cleanNum,
+          room_type_id: matchedType?.id || 'd0000000-0000-0000-0000-000000000001',
+          housekeeping_state: newRoomState,
+          notes: newRoomNotes || null,
+        }),
       });
-    } catch {
-      dataRepository.addRoom({
-        room_number: newRoomNumber.trim(),
-        room_type_id: newRoomTypeId,
-        housekeeping_state: newRoomState,
-        notes: newRoomNotes || null,
-      });
-    }
 
-    setIsAddModalOpen(false);
-    setNewRoomNumber('');
-    setNewRoomNotes('');
-    fetchRoomsData();
+      let savedRoom: Room;
+      if (res.ok) {
+        const data = await res.json();
+        savedRoom = data.room;
+      } else {
+        savedRoom = dataRepository.addRoom({
+          room_number: cleanNum,
+          room_type_id: matchedType?.id || 'd0000000-0000-0000-0000-000000000001',
+          housekeeping_state: newRoomState,
+          notes: newRoomNotes || null,
+        });
+        savedRoom.room_type = matchedType;
+      }
+
+      // Optimistic update
+      setRooms((prev) => {
+        const updated = [savedRoom, ...prev.filter((r) => r.id !== savedRoom.id && r.room_number !== cleanNum)];
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('rajmahal_rooms', JSON.stringify(updated));
+        }
+        return updated;
+      });
+
+      setIsAddModalOpen(false);
+      setNewRoomNumber('');
+      setNewRoomNotes('');
+      fetchRoomsData();
+    } catch (err: any) {
+      console.error('Error creating room:', err);
+      setActionError(err.message || 'Failed to save chamber');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const filteredRooms = useMemo(() => {
@@ -356,101 +452,186 @@ export default function RoomsHousekeepingPage() {
         )}
       </div>
 
-      {/* ── Add Room Modal ── */}
+      {/* ── Add Palace Chamber Modal (Royal Heritage Palace Theme) ── */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-[#E8DCD2] rounded-2xl max-w-md w-full p-5 shadow-2xl relative">
-            <button
-              onClick={() => setIsAddModalOpen(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-[#FBF6EF] text-[#81736D]"
-            >
-              ✕
-            </button>
-            <h2
-              className="text-xl font-bold text-[#4F0809] mb-1"
-              style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
-            >
-              Add Palace Chamber
-            </h2>
-            <p className="text-xs text-[#81736D] mb-4">
-              Register a new room or royal suite in the inventory
-            </p>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl relative text-[#4F0809] animate-fade-in">
+            {/* Royal Maroon Header with Gold Ornaments */}
+            <div className="bg-gradient-to-r from-[#4F0809] via-[#651012] to-[#4F0809] text-[#FFF8EB] p-5 relative border-b border-[#D8AA67]/40">
+              <button
+                type="button"
+                onClick={() => setIsAddModalOpen(false)}
+                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#D8AA67] flex items-center justify-center transition-colors cursor-pointer"
+                aria-label="Close dialog"
+              >
+                ✕
+              </button>
 
-            <form onSubmit={handleCreateRoom} className="space-y-3 text-xs">
+              <div className="flex items-center space-x-3.5">
+                <div className="w-11 h-11 rounded-2xl bg-[#D8AA67]/20 border border-[#D8AA67]/40 flex items-center justify-center shrink-0 text-[#D8AA67] shadow-inner">
+                  <BedDouble className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="text-[10px] font-bold text-[#D8AA67] tracking-[0.2em] uppercase">
+                      Palace Inventory
+                    </span>
+                    <span className="text-[#D8AA67] text-[8px]">&#9830;</span>
+                    <span className="text-[10px] text-[#FFF8EB]/80 font-medium">PMS Ledger</span>
+                  </div>
+                  <h2
+                    className="text-2xl font-bold text-[#FFF8EB] leading-tight"
+                    style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+                  >
+                    Add Palace Chamber
+                  </h2>
+                </div>
+              </div>
+            </div>
+
+            {/* Error prompt */}
+            {actionError && (
+              <div className="m-4 p-3 rounded-xl bg-red-100 text-red-900 text-xs flex items-center space-x-2 border border-red-300">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-700" />
+                <span>{actionError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateRoom} className="p-5 sm:p-6 space-y-4 text-xs">
+              {/* Chamber Number */}
               <div>
-                <label className="block text-[11px] font-semibold text-[#302421] mb-1">
+                <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
                   Chamber / Room Number *
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={newRoomNumber}
-                  onChange={(e) => setNewRoomNumber(e.target.value)}
-                  placeholder="e.g. 401"
-                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] font-semibold text-[#302421] mb-1">
-                    Chamber Type *
-                  </label>
-                  <select
-                    value={newRoomTypeId}
-                    onChange={(e) => setNewRoomTypeId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs bg-white focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
-                  >
-                    {roomTypes.map((rt) => (
-                      <option key={rt.id} value={rt.id}>
-                        {rt.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-[#302421] mb-1">
-                    Initial State
-                  </label>
-                  <select
-                    value={newRoomState}
-                    onChange={(e) => setNewRoomState(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs bg-white focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
-                  >
-                    <option value="available">Available / Clean</option>
-                    <option value="occupied">Occupied</option>
-                    <option value="cleaning">Cleaning</option>
-                    <option value="dirty">Dirty</option>
-                  </select>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-serif font-bold text-[#9C7A45]">
+                    №
+                  </span>
+                  <input
+                    type="text"
+                    required
+                    value={newRoomNumber}
+                    onChange={(e) => setNewRoomNumber(e.target.value)}
+                    placeholder="e.g. 101, 204, Suite 301"
+                    className="w-full h-11 pl-9 pr-3.5 text-xs sm:text-sm rounded-xl bg-[#F5ECDC] focus:bg-[#EFE2CC] border border-[#E8DFCE] focus:border-[#4F0809] focus:outline-none text-[#4F0809] placeholder-[#856B4D]/50 font-semibold"
+                  />
                 </div>
               </div>
 
+              {/* Chamber Type (Deluxe vs Non-Deluxe) */}
               <div>
-                <label className="block text-[11px] font-semibold text-[#302421] mb-1">
-                  Chamber Amenities / Balcony Notes
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D]">
+                    Chamber Category *
+                  </label>
+                  <span className="text-[10px] font-semibold text-[#9C7A45]">
+                    Deluxe or Non-Deluxe
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {roomTypes.slice(0, 2).map((rt) => {
+                    const isDeluxe = !rt.name.toLowerCase().includes('non');
+                    const isSelected = newRoomTypeId === rt.id;
+                    return (
+                      <button
+                        key={rt.id}
+                        type="button"
+                        onClick={() => setNewRoomTypeId(rt.id)}
+                        className={`p-3 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                          isSelected
+                            ? 'border-[#4F0809] bg-[#4F0809] text-[#FFF8EB] shadow-md'
+                            : 'border-[#E8DFCE] bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#4F0809]'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`text-[10px] font-bold uppercase tracking-wider ${isSelected ? 'text-[#D8AA67]' : 'text-[#856B4D]'}`}>
+                            {isDeluxe ? 'Royal Luxury' : 'Heritage Standard'}
+                          </span>
+                          {isSelected && <CheckCircle2 className="w-4 h-4 text-[#D8AA67]" />}
+                        </div>
+                        <div className="font-bold text-sm sm:text-base leading-snug">
+                          {isDeluxe ? 'Deluxe Room' : 'Non-Deluxe Room'}
+                        </div>
+                        <div className={`text-[11px] font-medium mt-1 ${isSelected ? 'text-[#FFF8EB]/80' : 'text-[#856B4D]'}`}>
+                          {isDeluxe ? '₹6,500 / night • King Bed' : '₹4,500 / night • Double Bed'}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Initial State */}
+              <div>
+                <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
+                  Initial Chamber State *
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'available', label: 'Available / Clean' },
+                    { id: 'occupied', label: 'Occupied' },
+                    { id: 'cleaning', label: 'Cleaning In Progress' },
+                    { id: 'dirty', label: 'Needs Cleaning' },
+                  ].map((s) => {
+                    const isSel = newRoomState === s.id;
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setNewRoomState(s.id as HousekeepingState)}
+                        className={`py-2 px-2 rounded-xl border text-[11px] font-semibold text-center transition cursor-pointer ${
+                          isSel
+                            ? 'border-[#4F0809] bg-[#4F0809] text-[#FFF8EB] shadow-xs'
+                            : 'border-[#E8DFCE] bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#4F0809]'
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Chamber Amenities / Notes */}
+              <div>
+                <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
+                  Chamber Amenities / Balcony Notes (Optional)
                 </label>
                 <textarea
                   rows={2}
                   value={newRoomNotes}
                   onChange={(e) => setNewRoomNotes(e.target.value)}
-                  placeholder="e.g. Aravalli view, marble bathtub, heritage jharokha..."
-                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
+                  placeholder="e.g. Palace courtyard garden view, deep marble bath, carved stone jharokha..."
+                  className="w-full p-3 rounded-xl bg-[#F5ECDC] focus:bg-[#EFE2CC] border border-[#E8DFCE] focus:border-[#4F0809] focus:outline-none text-[#4F0809] placeholder-[#856B4D]/50 text-xs resize-none"
                 />
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2">
+              {/* Actions Footer */}
+              <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-[#E8DFCE]">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-3 py-1.5 rounded-lg border border-[#E8DCD2] text-[#81736D] hover:bg-[#FBF6EF] text-xs transition"
+                  className="px-4 py-2.5 rounded-xl bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#4F0809] text-xs font-bold transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-[#4F0809] hover:bg-[#6B1518] text-white text-xs font-semibold shadow-sm transition"
+                  disabled={isSubmitting}
+                  className="px-6 py-2.5 rounded-xl bg-[#4F0809] hover:bg-[#6B1518] text-[#FFF8EB] text-xs font-bold shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
-                  Save Chamber
+                  {isSubmitting ? (
+                    <>
+                      <RotateCw className="w-3.5 h-3.5 animate-spin text-[#D8AA67]" />
+                      <span>Saving Chamber...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-[#D8AA67]" />
+                      <span>Save Chamber</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>

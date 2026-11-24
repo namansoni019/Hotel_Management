@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import Link from 'next/link';
 import {
   CalendarCheck,
   Search,
@@ -107,23 +108,64 @@ export default function RoomBookingsPage() {
     { fullName: '', aadhaarNumber: '', aadhaarImage: '' },
   ]);
 
-  useEffect(() => {
-    // Clear legacy localStorage
-    if (typeof window !== 'undefined') {
-      try {
-        window.localStorage.removeItem('dashboard_bookings');
-      } catch {}
+  const fetchRoomsAndTypes = useCallback(async () => {
+    try {
+      const res = await fetch('/api/rooms');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.rooms && Array.isArray(data.rooms)) {
+          setRooms(data.rooms);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('rajmahal_rooms', JSON.stringify(data.rooms));
+          }
+        }
+        if (data.roomTypes && Array.isArray(data.roomTypes)) {
+          setRoomTypes(data.roomTypes);
+          if (!formRoomTypeId && data.roomTypes.length > 0) {
+            setFormRoomTypeId(data.roomTypes[0].id);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching /api/rooms in bookings:', err);
     }
+  }, [formRoomTypeId]);
 
-    setRoomTypes(dataRepository.getRoomTypes());
-    setRooms(dataRepository.getRooms());
-    setFormCheckIn(new Date().toISOString().split('T')[0]);
-    setFormCheckOut(new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0]);
+  useEffect(() => {
+    // 1. Initial hydration from cache & memory repository
     const rts = dataRepository.getRoomTypes();
+    setRoomTypes(rts);
     if (rts.length > 0 && !formRoomTypeId) {
       setFormRoomTypeId(rts[0].id);
     }
 
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('rajmahal_rooms');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setRooms(parsed);
+          } else {
+            setRooms(dataRepository.getRooms());
+          }
+        } else {
+          setRooms(dataRepository.getRooms());
+        }
+      } catch {
+        setRooms(dataRepository.getRooms());
+      }
+    } else {
+      setRooms(dataRepository.getRooms());
+    }
+
+    setFormCheckIn(new Date().toISOString().split('T')[0]);
+    setFormCheckOut(new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0]);
+
+    // 2. Fetch live data from /api/rooms
+    fetchRoomsAndTypes();
+
+    // 3. Subscriptions to Firestore
     const unsubRes = onSnapshot(
       collection(db, 'reservations'),
       (snap) => {
@@ -142,7 +184,24 @@ export default function RoomBookingsPage() {
       collection(db, 'rooms'),
       (snap) => {
         if (!snap.empty) {
-          setRooms(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Room[]);
+          const typeList = dataRepository.getRoomTypes();
+          const liveRooms = snap.docs.map((d) => {
+            const data = d.data();
+            const typeId = data.room_type_id || typeList[0]?.id;
+            const matchedType = typeList.find((rt) => rt.id === typeId) || typeList[0];
+            return {
+              id: d.id,
+              room_number: data.room_number,
+              room_type_id: typeId,
+              housekeeping_state: data.housekeeping_state || 'available',
+              notes: data.notes || null,
+              room_type: data.room_type || matchedType,
+            } as Room;
+          });
+          setRooms(liveRooms);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('rajmahal_rooms', JSON.stringify(liveRooms));
+          }
         }
       },
       () => {}
@@ -152,10 +211,10 @@ export default function RoomBookingsPage() {
       unsubRes();
       unsubRooms();
     };
-  }, []);
+  }, [fetchRoomsAndTypes, formRoomTypeId]);
 
   const loadData = () => {
-    // Maintained for manual refresh trigger
+    fetchRoomsAndTypes();
   };
 
   // Filtered reservations
@@ -522,6 +581,101 @@ export default function RoomBookingsPage() {
         </div>
       </div>
 
+      {/* ── Registered Palace Chambers Live Inventory Strip ── */}
+      <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-2xl p-4 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[#4F0809] text-[#D8AA67] flex items-center justify-center shrink-0">
+              <BedDouble className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3
+                  className="text-base font-bold text-[#4F0809]"
+                  style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+                >
+                  Palace Chambers Inventory ({rooms.length})
+                </h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#D8AA67]/20 text-[#6B4E1B] border border-[#D8AA67]/40">
+                  Deluxe &amp; Non-Deluxe
+                </span>
+              </div>
+              <p className="text-[11px] text-[#81736D]">
+                Click any chamber to quickly assign or book in this reservation ledger
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/dashboard/rooms"
+            className="self-start sm:self-center text-xs font-bold text-[#4F0809] hover:text-[#6B1518] flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-[#E8DCD2] hover:bg-[#F6EAE0] transition"
+          >
+            <Plus className="w-3.5 h-3.5 text-[#D8AA67]" />
+            <span>Manage Chambers</span>
+          </Link>
+        </div>
+
+        {rooms.length === 0 ? (
+          <div className="py-6 text-center text-xs text-[#81736D] bg-white rounded-xl border border-[#E8DCD2]">
+            No palace chambers registered yet. Visit{' '}
+            <Link href="/dashboard/rooms" className="text-[#4F0809] font-bold underline">
+              Rooms &amp; Availability
+            </Link>{' '}
+            to register your first Deluxe or Non-Deluxe chamber.
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+            {rooms.map((r) => {
+              const isAvailable = !r.housekeeping_state || r.housekeeping_state.toLowerCase() === 'available';
+              const isOccupied = r.housekeeping_state?.toLowerCase() === 'occupied';
+              const isDeluxe = r.room_type?.name ? !r.room_type.name.toLowerCase().includes('non') : true;
+
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => {
+                    setFormRoomId(r.id);
+                    if (r.room_type_id) setFormRoomTypeId(r.room_type_id);
+                    setIsNewModalOpen(true);
+                  }}
+                  title={`Click to book Room ${r.room_number}`}
+                  className={`p-2.5 rounded-xl border text-left transition hover:scale-[1.02] cursor-pointer ${
+                    isAvailable
+                      ? 'bg-white border-[#E8DCD2] hover:border-[#4F0809] shadow-2xs'
+                      : isOccupied
+                      ? 'bg-[#4F0809] text-white border-[#4F0809]'
+                      : 'bg-amber-50 border-amber-200 text-amber-900'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-sm">Room {r.room_number}</span>
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        isAvailable ? 'bg-emerald-500' : isOccupied ? 'bg-red-300' : 'bg-amber-500'
+                      }`}
+                    />
+                  </div>
+                  <div
+                    className={`text-[10px] truncate font-medium mt-0.5 ${
+                      isOccupied ? 'text-white/80' : 'text-[#856B4D]'
+                    }`}
+                  >
+                    {isDeluxe ? 'Deluxe' : 'Non-Deluxe'}
+                  </div>
+                  <div
+                    className={`text-[9px] uppercase tracking-wider font-bold mt-1 ${
+                      isAvailable ? 'text-emerald-700' : isOccupied ? 'text-white/90' : 'text-amber-800'
+                    }`}
+                  >
+                    {isAvailable ? '● Available' : isOccupied ? '● Occupied' : '● In Service'}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* ── Bookings Table ── */}
       <div className="bg-white border border-[#E8DCD2] rounded-xl shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
@@ -569,10 +723,16 @@ export default function RoomBookingsPage() {
                       </td>
                       <td className="py-2.5 px-3">
                         <div className="font-medium text-[#302421]">
-                          {res.room?.room_number ? `Room ${res.room.room_number}` : 'Unassigned'}
+                          {res.room?.room_number
+                            ? `Room ${res.room.room_number}`
+                            : res.room_id
+                            ? `Room ${rooms.find((r) => r.id === res.room_id)?.room_number || res.room_id}`
+                            : 'Unassigned'}
                         </div>
                         <div className="text-[10px] text-[#81736D]">
-                          {res.room_type?.name || 'Heritage Suite'}
+                          {res.room_type?.name ||
+                            rooms.find((r) => r.id === res.room_id)?.room_type?.name ||
+                            'Deluxe Room'}
                         </div>
                       </td>
                       <td className="py-2.5 px-3 text-[11px] text-[#302421]">
@@ -1126,21 +1286,29 @@ export default function RoomBookingsPage() {
 
               <div>
                 <label className="block text-[11px] font-semibold text-[#302421] mb-1">
-                  Specific Suite Assignment (Optional)
+                  Specific Chamber / Suite Allocation (Optional)
                 </label>
                 <select
                   value={formRoomId}
-                  onChange={(e) => setFormRoomId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs bg-white focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
+                  onChange={(e) => {
+                    const chosenId = e.target.value;
+                    setFormRoomId(chosenId);
+                    const found = rooms.find((r) => r.id === chosenId);
+                    if (found?.room_type_id) {
+                      setFormRoomTypeId(found.room_type_id);
+                    }
+                  }}
+                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs bg-white focus:ring-1 focus:ring-[#4F0809] focus:outline-none font-medium"
                 >
-                  <option value="">Auto-assign best available suite</option>
-                  {rooms
-                    .filter((r) => r.housekeeping_state === 'available')
-                    .map((r) => (
+                  <option value="">Auto-assign best available chamber</option>
+                  {rooms.map((r) => {
+                    const isAvail = !r.housekeeping_state || r.housekeeping_state.toLowerCase() === 'available';
+                    return (
                       <option key={r.id} value={r.id}>
-                        Room {r.room_number} ({r.room_type?.name || 'Available'})
+                        Room {r.room_number} • {r.room_type?.name || 'Chamber'} ({isAvail ? 'Available / Clean' : r.housekeeping_state})
                       </option>
-                    ))}
+                    );
+                  })}
                 </select>
               </div>
 

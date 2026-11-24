@@ -144,11 +144,13 @@ export const dataRepository = {
     roomsState[idx] = { ...roomsState[idx], housekeeping_state: state };
     return roomsState[idx];
   },
-  addRoom(room: { room_number: string; room_type_id: string; housekeeping_state: Room['housekeeping_state']; notes?: string | null }): Room {
+  addRoom(room: { room_number: string; room_type_id: string; housekeeping_state: Room['housekeeping_state']; notes?: string | null; room_type?: RoomType }): Room {
+    const matchedType = room.room_type || roomTypesState.find((rt) => rt.id === room.room_type_id) || roomTypesState[0];
     const newRoom: Room = {
       id: `room-${Date.now()}`,
       room_number: room.room_number,
-      room_type_id: room.room_type_id,
+      room_type_id: matchedType.id,
+      room_type: matchedType,
       housekeeping_state: room.housekeeping_state,
       notes: room.notes || null,
     };
