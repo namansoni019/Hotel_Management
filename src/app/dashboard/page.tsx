@@ -16,7 +16,6 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
-  QrCode,
   Users,
   ChevronLeft,
   ChevronRight,
