@@ -880,12 +880,15 @@ export default function TablesReservationsPage() {
                     {/* QR Token Button */}
                     <button
                       type="button"
-                      onClick={() => setQrModalTable(table)}
-                      title="View digital dining QR token"
-                      className="flex items-center gap-1 text-[11px] font-mono font-semibold opacity-85 hover:opacity-100 transition underline underline-offset-2 cursor-pointer truncate max-w-[130px]"
+                      onClick={() => {
+                        setQrVenue(outletObj?.type === 'cafe' ? 'cafe' : 'restaurant');
+                        setQrModalTable(table);
+                      }}
+                      title="View digital dining QR token and URL"
+                      className="flex items-center gap-1 text-[11px] font-mono font-semibold opacity-90 hover:opacity-100 transition underline underline-offset-2 cursor-pointer truncate max-w-[170px]"
                     >
                       <QrCode className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">{qrTokenStr}</span>
+                      <span className="truncate">QR: menu?qr={outletObj?.type === 'cafe' ? 'c' : 'r'}&amp;table={table.table_number}</span>
                     </button>
 
                     {/* Action Buttons: EDIT & DELETE */}

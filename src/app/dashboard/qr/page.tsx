@@ -596,6 +596,9 @@ export default function QRCodeManagementPage() {
                     <div className="font-semibold text-xs text-[#4F0809] truncate mt-0.5">
                       {qr.location}
                     </div>
+                    <div className="font-mono text-[10px] text-[#4F0809] bg-white px-1.5 py-0.5 rounded border border-[#E8DCD2] truncate mt-1">
+                      {qr.targetUrl}
+                    </div>
                     <div className="text-[10px] text-[#2E7D32] font-medium mt-1 flex items-center gap-1">
                       <CheckCircle2 className="w-3 h-3 text-[#2E7D32]" />
                       <span>Ready for mobile scan</span>

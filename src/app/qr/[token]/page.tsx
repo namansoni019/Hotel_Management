@@ -60,8 +60,22 @@ function QRTableOrderContent() {
   };
 
   useEffect(() => {
-    // Resolve token
+    // Forward /qr/[token] to the new /menu?qr=r&table=... format and auto-reserve
     const resolved = dataRepository.resolveQRToken(token);
+    let tableNum = '';
+    let venueCode = 'r';
+    if (resolved) {
+      tableNum = resolved.table.table_number;
+      venueCode = resolved.outlet?.type === 'cafe' ? 'c' : 'r';
+    } else {
+      tableNum = token.replace(/^(table-|qr-tab-|tbl-)/i, '').toUpperCase();
+    }
+
+    if (tableNum) {
+      router.replace(`/menu?qr=${venueCode}&table=${tableNum}`);
+      return;
+    }
+
     if (resolved) {
       setTable(resolved.table);
       setOutlet(resolved.outlet);
@@ -76,7 +90,7 @@ function QRTableOrderContent() {
     } else {
       setErrorMsg('Invalid or expired QR code table session. Please consult staff.');
     }
-  }, [token]);
+  }, [token, router]);
 
   const addToCart = (item: MenuItem) => {
     setCart((prev) => {
