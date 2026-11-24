@@ -228,6 +228,10 @@ export default function TablesReservationsPage() {
     // Clear legacy localStorage
     if (typeof window !== 'undefined') {
       try {
+        const params = new URLSearchParams(window.location.search);
+        const searchVal = params.get('search');
+        if (searchVal) setSearchQuery(searchVal);
+
         window.localStorage.removeItem('dashboard_tables');
       } catch {}
     }

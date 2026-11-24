@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import {
   BedDouble,
@@ -23,7 +23,7 @@ import {
   X,
   FileSpreadsheet,
 } from 'lucide-react';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { dataRepository } from '@/lib/data/repository';
 import type { Order, Reservation, TableReservation, Room, InventoryItem } from '@/lib/types';
@@ -110,7 +110,17 @@ export default function AdminDashboardPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedBooking, setSelectedBooking] = useState<Reservation | null>(null);
   const [selectedTableRes, setSelectedTableRes] = useState<TableReservation | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [justRefreshed, setJustRefreshed] = useState(false);
+  const [lastSyncedTime, setLastSyncedTime] = useState<string>('');
+  const [mounted, setMounted] = useState(false);
+  const [liveNow, setLiveNow] = useState<Date>(() => new Date());
+  const [selectedDateIso, setSelectedDateIso] = useState<string>('');
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calMonth, setCalMonth] = useState<number>(() => new Date().getMonth());
+  const [calYear, setCalYear] = useState<number>(() => new Date().getFullYear());
+  const [activeRole, setActiveRole] = useState<string>('Admin');
+  const calendarRef = useRef<HTMLDivElement>(null);
 
   // Real-time Firestore state
   const [orders, setOrders] = useState<Order[]>(() => dataRepository.getOrders());
@@ -119,6 +129,48 @@ export default function AdminDashboardPage() {
   const [rooms, setRooms] = useState<Room[]>(() => dataRepository.getRooms());
   const [inventory, setInventory] = useState<InventoryItem[]>(() => dataRepository.getInventory());
   const [isLiveConnected, setIsLiveConnected] = useState(false);
+
+  // Live clock, date, active role sync & calendar outside click handler
+  useEffect(() => {
+    setMounted(true);
+    const current = new Date();
+    setLiveNow(current);
+    setCalMonth(current.getMonth());
+    setCalYear(current.getFullYear());
+    setLastSyncedTime(
+      current.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+    );
+
+    try {
+      const savedRole = window.localStorage.getItem('rajmahal_active_role');
+      if (savedRole) setActiveRole(savedRole);
+    } catch {
+      // Ignored
+    }
+
+    const onRoleChanged = (e: Event) => {
+      const custom = e as CustomEvent<string>;
+      if (custom.detail) setActiveRole(custom.detail);
+    };
+    window.addEventListener('rajmahal_role_changed', onRoleChanged);
+
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (calendarRef.current && !calendarRef.current.contains(e.target as Node)) {
+        setCalendarOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+
+    const timer = setInterval(() => {
+      setLiveNow(new Date());
+    }, 1000);
+
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('rajmahal_role_changed', onRoleChanged);
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, []);
 
   // Real-time Firestore subscriptions for live dashboard content
   React.useEffect(() => {
@@ -253,13 +305,104 @@ export default function AdminDashboardPage() {
   const lowStockCount = lowStockItems.length;
   const lowStockNames = lowStockCount > 0 ? lowStockItems.map((i) => i.name).slice(0, 2).join(', ') : 'All in stock';
 
-  const handleRefresh = () => {
-    setRefreshKey((k) => k + 1);
-  };
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const [ordSnap, resSnap, tblSnap, rmSnap, invSnap] = await Promise.all([
+        getDocs(collection(db, 'orders')).catch(() => null),
+        getDocs(collection(db, 'reservations')).catch(() => null),
+        getDocs(collection(db, 'table_reservations')).catch(() => null),
+        getDocs(collection(db, 'rooms')).catch(() => null),
+        getDocs(collection(db, 'inventory')).catch(() => null),
+      ]);
+
+      if (ordSnap && !ordSnap.empty) {
+        const list = ordSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as Order[];
+        list.sort((a, b) => getOrderTimestamp(b.created_at) - getOrderTimestamp(a.created_at));
+        setOrders(list);
+      } else {
+        const res = await fetch('/api/orders').catch(() => null);
+        if (res && res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.orders) && data.orders.length > 0) {
+            const list = [...data.orders];
+            list.sort((a, b) => getOrderTimestamp(b.created_at) - getOrderTimestamp(a.created_at));
+            setOrders(list);
+          }
+        }
+      }
+
+      if (resSnap && !resSnap.empty) {
+        const list = resSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as Reservation[];
+        list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+        setBookings(list);
+      }
+      if (tblSnap && !tblSnap.empty) {
+        setTableReservations(tblSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as TableReservation[]);
+      }
+      if (rmSnap && !rmSnap.empty) {
+        setRooms(rmSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as Room[]);
+      }
+      if (invSnap && !invSnap.empty) {
+        setInventory(invSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as InventoryItem[]);
+      }
+
+      setLastSyncedTime(
+        new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+      );
+      setJustRefreshed(true);
+      setTimeout(() => setJustRefreshed(false), 2000);
+    } catch (err) {
+      console.warn('Dashboard refresh error:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  const currentGreeting = useMemo(() => {
+    if (!mounted) return 'Good Day';
+    const hr = liveNow.getHours();
+    if (hr < 12) return 'Good Morning';
+    if (hr < 17) return 'Good Afternoon';
+    return 'Good Evening';
+  }, [mounted, liveNow]);
+
+  const todayIso = useMemo(() => {
+    const y = liveNow.getFullYear();
+    const m = String(liveNow.getMonth() + 1).padStart(2, '0');
+    const d = String(liveNow.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, [liveNow]);
+
+  const formattedHeaderDate = useMemo(() => {
+    if (!mounted) return 'Today';
+    if (!selectedDateIso || selectedDateIso === todayIso) {
+      return `Today (${liveNow.toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })})`;
+    }
+    const sel = new Date(selectedDateIso + 'T00:00:00');
+    return sel.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  }, [mounted, selectedDateIso, todayIso, liveNow]);
 
   // Filtered lists
   const filteredOrders = useMemo(() => {
     let list = orders;
+    if (selectedDateIso && selectedDateIso !== todayIso) {
+      list = list.filter((o) => {
+        const ts = getOrderTimestamp(o.created_at);
+        if (!ts) return false;
+        const d = new Date(ts);
+        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return iso === selectedDateIso;
+      });
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
@@ -272,10 +415,17 @@ export default function AdminDashboardPage() {
       );
     }
     return list;
-  }, [orders, searchQuery]);
+  }, [orders, searchQuery, selectedDateIso, todayIso]);
 
   const filteredBookings = useMemo(() => {
     let list = bookings;
+    if (selectedDateIso && selectedDateIso !== todayIso) {
+      list = list.filter((b) => {
+        const ci = (b.check_in || '').slice(0, 10);
+        const co = (b.check_out || '').slice(0, 10);
+        return ci <= selectedDateIso && co >= selectedDateIso;
+      });
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(
@@ -285,7 +435,7 @@ export default function AdminDashboardPage() {
       );
     }
     return list;
-  }, [bookings, searchQuery]);
+  }, [bookings, searchQuery, selectedDateIso, todayIso]);
 
   const filteredTableRes = useMemo(() => {
     let list = tableReservations;
@@ -345,102 +495,175 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-4">
-      {/* ── 1. Top Context Banner matching Screenshot ── */}
-      <div className="bg-white border border-[#E8DCD2] rounded-xl p-3 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-        <div className="flex items-center space-x-3">
-          {/* Palace Thumbnail Graphic */}
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#4F0809] to-[#350506] p-1.5 flex items-center justify-center shrink-0 shadow-sm border border-[#D8AA67]/40">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#D8AA67" strokeWidth="1.75" className="w-5 h-5">
-              <path d="M3 21h18M4 18h16M6 18V9l6-5 6 5v9M10 18v-4h4v4" />
-            </svg>
-          </div>
-          <div>
-            <span className="text-[10px] uppercase tracking-widest font-bold text-[#B78A48] block leading-none">
-              PALACE HERITAGE EXECUTIVE SUITE
-            </span>
-            <span className="text-sm sm:text-base font-bold text-[#302421] block mt-1">
-              Admin Operations Hub • Rajmahal Heritage Grand
-            </span>
-          </div>
-        </div>
-
-        {/* Sync Badge */}
-        <div className="flex items-center space-x-2">
-          <span className="inline-flex items-center space-x-1.5 bg-[#FAF4E8] text-[#9A7432] border border-[#E2D2B8] text-[11px] font-semibold px-2.5 py-1 rounded-full shadow-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#2E7D32]" />
-            <span>Synced with PMS v4.2</span>
-          </span>
-        </div>
-      </div>
-
-      {/* ── 2. Page Heading & Refresh matching Screenshot ── */}
+      {/* ── 1. Page Heading, Real-Time Calendar & Live Refresh ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
         <div>
           <h1
-            className="text-2xl sm:text-3xl font-bold text-[#302421] tracking-tight leading-none"
+            className="text-2xl sm:text-3xl font-bold text-[#4F0809] tracking-tight leading-none"
             style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
           >
-            Good Morning, Admin!
+            {currentGreeting}, {activeRole}!
           </h1>
-          <p className="text-xs text-stone-500 mt-1">
-            Here&apos;s what&apos;s happening at Rajmahal Heritage Hotel today.
-          </p>
+          <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-[#856B4D]">
+            <span>Here&apos;s what&apos;s happening at Rajmahal Heritage Hotel today.</span>
+            {mounted && lastSyncedTime && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#F5ECDC] border border-[#E8DFCE] text-[10px] font-semibold text-[#8F6628]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#2E7D32] animate-pulse" />
+                Live Sync: {lastSyncedTime}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center space-x-2.5 self-start sm:self-auto">
-          {/* Date Selector */}
-          <div className="bg-white border border-[#E8DCD2] rounded-lg px-3 py-1.5 text-xs text-stone-700 font-medium shadow-xs flex items-center space-x-1.5">
-            <span>Today (19 Oct 2026)</span>
-            <Calendar className="w-3.5 h-3.5 text-stone-400" />
+          {/* Interactive Real-Time Calendar Picker */}
+          <div className="relative" ref={calendarRef}>
+            <button
+              type="button"
+              onClick={() => setCalendarOpen(!calendarOpen)}
+              className="bg-[#FDF8EE] border border-[#D8AA67]/60 hover:border-[#4F0809] rounded-xl px-3.5 py-2 text-xs text-[#4F0809] font-semibold shadow-2xs flex items-center space-x-2 transition-all cursor-pointer"
+            >
+              <Calendar className="w-3.5 h-3.5 text-[#8F6628]" />
+              <span>{formattedHeaderDate}</span>
+            </button>
+
+            {calendarOpen && (
+              <div className="absolute right-0 mt-2 w-72 bg-[#FDF8EE] border border-[#D8AA67]/60 rounded-2xl shadow-2xl p-3.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+                <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-[#E8DFCE]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (calMonth === 0) {
+                        setCalMonth(11);
+                        setCalYear((y) => y - 1);
+                      } else {
+                        setCalMonth((m) => m - 1);
+                      }
+                    }}
+                    className="w-7 h-7 rounded-lg bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#4F0809] flex items-center justify-center transition cursor-pointer"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <div className="text-xs font-bold text-[#4F0809] tracking-wide">
+                    {new Date(calYear, calMonth, 1).toLocaleDateString('en-IN', {
+                      month: 'long',
+                      year: 'numeric',
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (calMonth === 11) {
+                        setCalMonth(0);
+                        setCalYear((y) => y + 1);
+                      } else {
+                        setCalMonth((m) => m + 1);
+                      }
+                    }}
+                    className="w-7 h-7 rounded-lg bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#4F0809] flex items-center justify-center transition cursor-pointer"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-[#856B4D] uppercase mb-1">
+                  {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+                    <div key={d} className="py-1">{d}</div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-7 gap-1 text-center text-xs">
+                  {Array.from({ length: new Date(calYear, calMonth, 1).getDay() }).map((_, i) => (
+                    <div key={`dash-empty-${i}`} />
+                  ))}
+                  {Array.from({ length: new Date(calYear, calMonth + 1, 0).getDate() }).map((_, idx) => {
+                    const day = idx + 1;
+                    const isoStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const isToday = isoStr === todayIso;
+                    const isSelected = (selectedDateIso || todayIso) === isoStr;
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => {
+                          setSelectedDateIso(isoStr);
+                          setCurrentPage(1);
+                          setCalendarOpen(false);
+                        }}
+                        className={`h-8 rounded-lg flex items-center justify-center font-semibold transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#4F0809] text-[#FDF8EE] shadow-xs ring-1 ring-[#D8AA67]'
+                            : isToday
+                            ? 'bg-[#F5ECDC] text-[#4F0809] border border-[#D8AA67]'
+                            : 'text-[#302421] hover:bg-[#F5ECDC]'
+                        }`}
+                      >
+                        {day}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-2.5 pt-2 border-t border-[#E8DFCE] flex items-center justify-between text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const t = new Date();
+                      setCalMonth(t.getMonth());
+                      setCalYear(t.getFullYear());
+                      setSelectedDateIso(todayIso);
+                      setCurrentPage(1);
+                      setCalendarOpen(false);
+                    }}
+                    className="font-bold text-[#8F6628] hover:text-[#4F0809] transition cursor-pointer"
+                  >
+                    Reset to Today
+                  </button>
+                  <span className="text-[10px] text-[#856B4D]">Click day to filter</span>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Refresh Button */}
+          {/* Live Refresh Button */}
           <button
             type="button"
             onClick={handleRefresh}
-            className="inline-flex items-center space-x-1.5 bg-[#302421] hover:bg-[#4F0809] text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg shadow-xs transition-colors cursor-pointer"
+            disabled={isRefreshing}
+            className={`inline-flex items-center space-x-1.5 text-xs font-semibold px-3.5 py-2 rounded-xl shadow-xs transition-all cursor-pointer ${
+              justRefreshed
+                ? 'bg-[#2E7D32] text-white'
+                : 'bg-[#4F0809] hover:bg-[#350506] text-[#FDF8EE]'
+            }`}
           >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Refresh</span>
+            <RefreshCw className={`w-3.5 h-3.5 text-[#D8AA67] ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>{isRefreshing ? 'Syncing...' : justRefreshed ? 'Synced!' : 'Refresh'}</span>
           </button>
         </div>
       </div>
 
-      {/* ── 3. SIMULATE VIEW / Role Switcher matching Screenshot ── */}
+      {/* ── 2. SIMULATE VIEW / Role Switcher ── */}
       <div className="flex items-center space-x-2 overflow-x-auto py-1 text-xs">
-        <span className="text-[11px] uppercase tracking-wider font-bold text-stone-500 shrink-0">
+        <span className="text-[11px] uppercase tracking-wider font-bold text-[#856B4D] shrink-0">
           SIMULATE VIEW:
         </span>
         <button
           type="button"
-          className="bg-[#302421] text-white px-3.5 py-1 rounded-full text-xs font-semibold shadow-xs shrink-0"
+          className="bg-[#4F0809] text-[#FDF8EE] px-3.5 py-1.5 rounded-full text-xs font-semibold shadow-xs shrink-0"
         >
           Admin
         </button>
         <Link
           href="/dashboard/kitchen"
-          className="bg-white hover:bg-stone-50 text-stone-700 border border-[#E8DCD2] px-3.5 py-1 rounded-full text-xs font-medium shrink-0 transition-colors"
+          className="bg-[#FDF8EE] hover:bg-[#F5ECDC] text-[#4F0809] border border-[#D8AA67]/50 px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 transition-colors"
         >
           Kitchen KOT
         </Link>
         <Link
           href="/dashboard/waiter"
-          className="bg-white hover:bg-stone-50 text-stone-700 border border-[#E8DCD2] px-3.5 py-1 rounded-full text-xs font-medium shrink-0 transition-colors"
+          className="bg-[#FDF8EE] hover:bg-[#F5ECDC] text-[#4F0809] border border-[#D8AA67]/50 px-3.5 py-1.5 rounded-full text-xs font-semibold shrink-0 transition-colors"
         >
-          Floor Steward
-        </Link>
-        <Link
-          href="/dashboard/housekeeping"
-          className="bg-white hover:bg-stone-50 text-stone-700 border border-[#E8DCD2] px-3.5 py-1 rounded-full text-xs font-medium shrink-0 transition-colors"
-        >
-          Housekeeping
-        </Link>
-        <Link
-          href="/restaurant"
-          className="bg-white hover:bg-stone-50 text-stone-700 border border-[#E8DCD2] px-3.5 py-1 rounded-full text-xs font-medium shrink-0 transition-colors flex items-center space-x-1.5"
-        >
-          <QrCode className="w-3 h-3 text-[#B78A48]" />
-          <span>Guest QR Portal</span>
+          Waiter
         </Link>
       </div>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -20,14 +20,17 @@ import {
   Settings,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   Menu,
   X,
   Search,
   Calendar,
+  Clock,
   Bell,
   ExternalLink,
   LogOut,
   ShieldCheck,
+  UserCheck,
   CheckCircle2,
   AlertTriangle,
   Percent,
@@ -35,8 +38,19 @@ import {
   Receipt,
   ArrowLeft,
   Image as ImageIcon,
+  Trash2,
+  Check,
 } from 'lucide-react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { subscribeToAuth, signOutUser, getUserProfile, checkAdminInDb } from '@/lib/firebase/auth';
+
+const PALACE_ROLES = [
+  { id: 'Admin', label: 'Admin', desc: 'Full Palace Operations', icon: ShieldCheck },
+  { id: 'Manager', label: 'Manager', desc: 'Bookings & Guest Desk', icon: UserCheck },
+  { id: 'Kitchen Chef', label: 'Kitchen Chef', desc: 'KOT & Culinary Pass', icon: ChefHat },
+  { id: 'Waiter', label: 'Waiter', desc: 'Dining & Room Service', icon: UtensilsCrossed },
+] as const;
 
 function PalaceGatewayLogo() {
   return (
@@ -58,26 +72,79 @@ function PalaceGatewayLogo() {
   );
 }
 
+function normalizeRoleLabel(raw: string): string {
+  const lower = (raw || '').toLowerCase();
+  if (lower.includes('manager')) return 'Manager';
+  if (lower.includes('kitchen') || lower.includes('chef')) return 'Kitchen Chef';
+  if (lower.includes('waiter') || lower.includes('steward')) return 'Waiter';
+  return 'Admin';
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [ordersExpanded, setOrdersExpanded] = useState(true);
-  const [selectedRole, setSelectedRole] = useState('Administrator');
+  const [selectedRole, setSelectedRole] = useState('Admin');
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
+
+  // Real-time Date & Clock State
+  const [mounted, setMounted] = useState(false);
+  const [now, setNow] = useState<Date>(() => new Date());
+  const [calMonth, setCalMonth] = useState<number>(() => new Date().getMonth());
+  const [calYear, setCalYear] = useState<number>(() => new Date().getFullYear());
+
+  // Live Data for Top Global Search & Operational Alerts
+  const [liveOrders, setLiveOrders] = useState<any[]>([]);
+  const [liveReservations, setLiveReservations] = useState<any[]>([]);
+  const [liveRooms, setLiveRooms] = useState<any[]>([]);
+  const [liveTables, setLiveTables] = useState<any[]>([]);
+  const [liveInventory, setLiveInventory] = useState<any[]>([]);
+  const [dismissedAlertIds, setDismissedAlertIds] = useState<string[]>([]);
 
   // Staff Authorization State
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
   const [staffInfo, setStaffInfo] = useState<{ name: string; role: string; email: string } | null>(null);
 
+  const searchRef = useRef<HTMLDivElement>(null);
+  const calendarRef = useRef<HTMLDivElement>(null);
   const roleRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
+
+  // Live ticking clock & date updater (1s interval)
+  useEffect(() => {
+    setMounted(true);
+    const current = new Date();
+    setNow(current);
+    setCalMonth(current.getMonth());
+    setCalYear(current.getFullYear());
+
+    try {
+      const savedDismissed = window.sessionStorage.getItem('rajmahal_dismissed_alerts');
+      if (savedDismissed) {
+        setDismissedAlertIds(JSON.parse(savedDismissed));
+      }
+      const savedRole = window.localStorage.getItem('rajmahal_active_role');
+      if (savedRole) {
+        setSelectedRole(normalizeRoleLabel(savedRole));
+      }
+    } catch {
+      // Ignored
+    }
+
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Remove any legacy saved localStorage content for admin dashboard
   useEffect(() => {
@@ -156,12 +223,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
 
         if (isStaff) {
+          const normalized = normalizeRoleLabel(resolvedRole);
           setStaffInfo({
             name: resolvedName,
-            role: resolvedRole,
+            role: normalized,
             email,
           });
-          setSelectedRole(resolvedRole.charAt(0).toUpperCase() + resolvedRole.slice(1));
+          setSelectedRole((prev) => {
+            if (typeof window !== 'undefined' && window.localStorage.getItem('rajmahal_active_role')) {
+              return prev;
+            }
+            return normalized;
+          });
           setCheckingAuth(false);
         } else {
           setAccessDenied(true);
@@ -177,9 +250,54 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     };
   }, [pathname, router]);
 
+  // Subscribe to real-time Firestore collections for Global Search & Operational Alerts
+  useEffect(() => {
+    if (checkingAuth || accessDenied) return;
+
+    const unsubOrders = onSnapshot(
+      collection(db, 'orders'),
+      (snap) => setLiveOrders(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      () => {}
+    );
+    const unsubRes = onSnapshot(
+      collection(db, 'reservations'),
+      (snap) => setLiveReservations(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      () => {}
+    );
+    const unsubRooms = onSnapshot(
+      collection(db, 'rooms'),
+      (snap) => setLiveRooms(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      () => {}
+    );
+    const unsubTables = onSnapshot(
+      collection(db, 'tables'),
+      (snap) => setLiveTables(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      () => {}
+    );
+    const unsubInv = onSnapshot(
+      collection(db, 'inventory'),
+      (snap) => setLiveInventory(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      () => {}
+    );
+
+    return () => {
+      unsubOrders();
+      unsubRes();
+      unsubRooms();
+      unsubTables();
+      unsubInv();
+    };
+  }, [checkingAuth, accessDenied]);
+
   // Close dropdowns on outside click
   useEffect(() => {
     const handleOutside = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchFocused(false);
+      }
+      if (calendarRef.current && !calendarRef.current.contains(e.target as Node)) {
+        setCalendarOpen(false);
+      }
       if (roleRef.current && !roleRef.current.contains(e.target as Node)) {
         setRoleDropdownOpen(false);
       }
@@ -194,10 +312,184 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
 
+  // Live multi-entity global search results
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return { bookings: [], orders: [], rooms: [], tables: [], total: 0 };
+
+    const bookings = liveReservations
+      .filter(
+        (b) =>
+          (b.reference_code || '').toLowerCase().includes(q) ||
+          (b.guest?.name || '').toLowerCase().includes(q) ||
+          (b.guest?.phone || '').toLowerCase().includes(q) ||
+          (b.room?.room_number || '').toLowerCase().includes(q)
+      )
+      .slice(0, 4);
+
+    const orders = liveOrders
+      .filter(
+        (o) =>
+          (o.order_number || '').toLowerCase().includes(q) ||
+          (o.table_number || '').toLowerCase().includes(q) ||
+          (o.room_number || '').toLowerCase().includes(q) ||
+          (o.delivery_name || '').toLowerCase().includes(q) ||
+          (o.pickup_name || '').toLowerCase().includes(q) ||
+          (o.status || '').toLowerCase().includes(q)
+      )
+      .slice(0, 4);
+
+    const rooms = liveRooms
+      .filter(
+        (r) =>
+          String(r.room_number || '').toLowerCase().includes(q) ||
+          (r.room_category || r.room_type_name || '').toLowerCase().includes(q) ||
+          (r.housekeeping_state || '').toLowerCase().includes(q)
+      )
+      .slice(0, 3);
+
+    const tables = liveTables
+      .filter(
+        (t) =>
+          String(t.table_number || '').toLowerCase().includes(q) ||
+          (t.outlet_name || '').toLowerCase().includes(q)
+      )
+      .slice(0, 3);
+
+    return {
+      bookings,
+      orders,
+      rooms,
+      tables,
+      total: bookings.length + orders.length + rooms.length + tables.length,
+    };
+  }, [searchQuery, liveReservations, liveOrders, liveRooms, liveTables]);
+
+  // Real-time Operational Alerts derived from live collections
+  const activeAlerts = useMemo(() => {
+    const alerts: {
+      id: string;
+      type: 'warning' | 'info' | 'success';
+      title: string;
+      desc: string;
+      href: string;
+      time: string;
+    }[] = [];
+
+    const lowStock = liveInventory.filter((i) => i.status === 'low_stock');
+    if (lowStock.length > 0) {
+      alerts.push({
+        id: `low-stock-${lowStock.length}`,
+        type: 'warning',
+        title: `Low Stock Alert: ${lowStock.length} Item${lowStock.length > 1 ? 's' : ''}`,
+        desc: `${lowStock.slice(0, 2).map((i) => i.name).join(', ')} below reserve threshold.`,
+        href: '/dashboard/inventory',
+        time: 'Inventory Sync',
+      });
+    }
+
+    const pendingOrders = liveOrders.filter(
+      (o) => !['completed', 'cancelled', 'delivered'].includes((o.status || '').toLowerCase())
+    );
+    pendingOrders.slice(0, 2).forEach((ord) => {
+      alerts.push({
+        id: `ord-${ord.id}`,
+        type: 'info',
+        title: `Active Order ${ord.order_number || ''}`.trim(),
+        desc: `${ord.table_number || (ord.room_number ? `Room ${ord.room_number}` : 'Dining')} • ${ord.status || 'New'}`,
+        href: `/dashboard/orders?search=${encodeURIComponent(ord.order_number || '')}`,
+        time: 'Live KOT',
+      });
+    });
+
+    const recentBookings = liveReservations.filter((b) => b.status === 'confirmed' || b.status === 'checked_in');
+    recentBookings.slice(0, 2).forEach((res) => {
+      alerts.push({
+        id: `res-${res.id}`,
+        type: 'success',
+        title: `${res.status === 'checked_in' ? 'Checked-In Guest' : 'Confirmed Arrival'}: ${res.guest?.name || res.reference_code}`,
+        desc: `Ref ${res.reference_code} • ${res.room_type?.name || 'Deluxe Suite'}`,
+        href: `/dashboard/bookings?search=${encodeURIComponent(res.reference_code || '')}`,
+        time: res.check_in_time || '12:00 PM',
+      });
+    });
+
+    // If no live alerts exist yet and user hasn't cleared welcome alerts, show default readiness alerts
+    if (alerts.length === 0) {
+      alerts.push(
+        {
+          id: 'sys-pms-ready',
+          type: 'success',
+          title: 'Palace PMS & KOT Synced',
+          desc: 'All chambers, orders, and reservations connected in real time.',
+          href: '/dashboard',
+          time: 'Live Status',
+        },
+        {
+          id: 'sys-checkins-ready',
+          type: 'info',
+          title: 'Front Desk Check-In Window',
+          desc: 'Standard suite check-in begins at 12:00 PM IST.',
+          href: '/dashboard/bookings',
+          time: 'Daily Desk',
+        }
+      );
+    }
+
+    return alerts.filter((a) => !dismissedAlertIds.includes(a.id));
+  }, [liveInventory, liveOrders, liveReservations, dismissedAlertIds]);
+
+  const handleClearAllNotifications = () => {
+    const allIds = activeAlerts.map((a) => a.id);
+    const updated = Array.from(new Set([...dismissedAlertIds, ...allIds]));
+    setDismissedAlertIds(updated);
+    try {
+      window.sessionStorage.setItem('rajmahal_dismissed_alerts', JSON.stringify(updated));
+    } catch {
+      // Ignored
+    }
+  };
+
+  const handleDismissSingleAlert = (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const updated = Array.from(new Set([...dismissedAlertIds, id]));
+    setDismissedAlertIds(updated);
+    try {
+      window.sessionStorage.setItem('rajmahal_dismissed_alerts', JSON.stringify(updated));
+    } catch {
+      // Ignored
+    }
+  };
+
+  const handleRoleSwitch = (roleId: string) => {
+    setSelectedRole(roleId);
+    setRoleDropdownOpen(false);
+    try {
+      window.localStorage.setItem('rajmahal_active_role', roleId);
+      window.dispatchEvent(new CustomEvent('rajmahal_role_changed', { detail: roleId }));
+    } catch {
+      // Ignored
+    }
+  };
+
   const handleGlobalSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchQuery.trim()) return;
-    router.push(`/dashboard/orders?search=${encodeURIComponent(searchQuery.trim())}`);
+    const q = searchQuery.trim();
+    if (!q) return;
+
+    if (searchResults.bookings.length > 0 && searchResults.orders.length === 0) {
+      router.push(`/dashboard/bookings?search=${encodeURIComponent(q)}`);
+    } else if (searchResults.rooms.length > 0 && searchResults.orders.length === 0 && searchResults.bookings.length === 0) {
+      router.push(`/dashboard/rooms?search=${encodeURIComponent(q)}`);
+    } else if (searchResults.tables.length > 0 && searchResults.orders.length === 0) {
+      router.push(`/dashboard/tables?search=${encodeURIComponent(q)}`);
+    } else if (searchResults.bookings.length > 0 && q.toUpperCase().startsWith('BK')) {
+      router.push(`/dashboard/bookings?search=${encodeURIComponent(q)}`);
+    } else {
+      router.push(`/dashboard/orders?search=${encodeURIComponent(q)}`);
+    }
+    setSearchFocused(false);
   };
 
   const isOrdersActive = pathname.startsWith('/dashboard/orders');
@@ -632,103 +924,518 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Menu className="w-5 h-5" />
             </button>
 
-            {/* Search Input Pill */}
-            <form onSubmit={handleGlobalSearch} className="relative">
-              <div className="flex items-center bg-[#FAF6EF] border border-[#E8DCD2] rounded-full px-3.5 py-1.5 w-60 sm:w-72 md:w-88 transition-all focus-within:ring-1 focus-within:ring-[#4F0809] focus-within:border-[#4F0809] focus-within:bg-white">
-                <Search className="w-3.5 h-3.5 text-stone-400 mr-2 shrink-0" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search reservation, guest, bill, or KOT..."
-                  className="w-full text-xs text-[#302421] placeholder:text-stone-400 bg-transparent focus:outline-none"
-                />
-              </div>
-            </form>
+            {/* Working Global Search Input Pill + Live Results Dropdown */}
+            <div className="relative" ref={searchRef}>
+              <form onSubmit={handleGlobalSearch}>
+                <div className="flex items-center bg-[#FAF6EF] border border-[#E8DCD2] rounded-full px-3.5 py-1.5 w-56 sm:w-64 md:w-80 transition-all focus-within:ring-1 focus-within:ring-[#4F0809] focus-within:border-[#4F0809] focus-within:bg-white">
+                  <Search className="w-3.5 h-3.5 text-[#8F6628] mr-2 shrink-0" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onFocus={() => setSearchFocused(true)}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setSearchFocused(true);
+                    }}
+                    placeholder="Search reservation, guest, bill, or KOT..."
+                    className="w-full text-xs text-[#302421] placeholder:text-stone-400 bg-transparent focus:outline-none"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery('');
+                        setSearchFocused(false);
+                      }}
+                      className="text-stone-400 hover:text-[#4F0809] ml-1 cursor-pointer"
+                      aria-label="Clear search"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </form>
+
+              {searchFocused && searchQuery.trim().length > 0 && (
+                <div className="absolute left-0 mt-2 w-80 sm:w-96 bg-[#FDF8EE] border border-[#D8AA67]/60 rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="bg-gradient-to-r from-[#4F0809] to-[#6B1518] px-3.5 py-2 flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#E1B46F]">
+                      Live Palace Search
+                    </span>
+                    <span className="text-[10px] text-[#F5ECDC] font-semibold">
+                      {searchResults.total} result{searchResults.total !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  {searchResults.total === 0 ? (
+                    <div className="p-6 text-center">
+                      <Search className="w-6 h-6 text-[#D8AA67] mx-auto mb-1.5" />
+                      <p className="text-xs font-bold text-[#4F0809]">No matching records</p>
+                      <p className="text-[11px] text-[#856B4D] mt-0.5">
+                        Try searching by guest name, booking code (BK-...), order (#ORD-...), room or table number.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="max-h-80 overflow-y-auto p-2 space-y-2.5 text-xs">
+                      {searchResults.bookings.length > 0 && (
+                        <div>
+                          <div className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#856B4D]">
+                            Room Bookings &amp; Guests
+                          </div>
+                          <div className="space-y-1 mt-1">
+                            {searchResults.bookings.map((b: any) => (
+                              <button
+                                key={b.id}
+                                type="button"
+                                onClick={() => {
+                                  router.push(`/dashboard/bookings?search=${encodeURIComponent(b.reference_code || b.guest?.name || searchQuery)}`);
+                                  setSearchFocused(false);
+                                }}
+                                className="w-full text-left px-2.5 py-2 rounded-xl bg-[#F5ECDC]/70 hover:bg-[#EFE2CC] border border-[#E8DFCE] flex items-center justify-between transition cursor-pointer"
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <CalendarCheck className="w-4 h-4 text-[#4F0809] shrink-0" />
+                                  <div className="truncate">
+                                    <div className="font-bold text-[#4F0809] truncate">
+                                      {b.guest?.name || 'Guest'} • {b.reference_code}
+                                    </div>
+                                    <div className="text-[10px] text-[#856B4D] truncate">
+                                      {b.guest?.phone || 'No phone'} • {b.room_type?.name || 'Suite'}
+                                    </div>
+                                  </div>
+                                </div>
+                                <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full bg-[#4F0809]/10 text-[#4F0809] shrink-0">
+                                  {b.status}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {searchResults.orders.length > 0 && (
+                        <div>
+                          <div className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#856B4D]">
+                            Orders &amp; Bills / KOT
+                          </div>
+                          <div className="space-y-1 mt-1">
+                            {searchResults.orders.map((o: any) => (
+                              <button
+                                key={o.id}
+                                type="button"
+                                onClick={() => {
+                                  router.push(`/dashboard/orders?search=${encodeURIComponent(o.order_number || searchQuery)}`);
+                                  setSearchFocused(false);
+                                }}
+                                className="w-full text-left px-2.5 py-2 rounded-xl bg-[#F5ECDC]/70 hover:bg-[#EFE2CC] border border-[#E8DFCE] flex items-center justify-between transition cursor-pointer"
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Receipt className="w-4 h-4 text-[#8F6628] shrink-0" />
+                                  <div className="truncate">
+                                    <div className="font-bold text-[#4F0809] truncate">
+                                      {o.order_number}
+                                    </div>
+                                    <div className="text-[10px] text-[#856B4D] truncate">
+                                      {o.table_number || (o.room_number ? `Room ${o.room_number}` : o.delivery_name || 'Counter')} • ₹{Math.round((o.total_amount_minor || o.total_minor || 0) / 100)}
+                                    </div>
+                                  </div>
+                                </div>
+                                <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full bg-[#D8AA67]/25 text-[#4F0809] shrink-0">
+                                  {o.status}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {searchResults.rooms.length > 0 && (
+                        <div>
+                          <div className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#856B4D]">
+                            Palace Chambers / Rooms
+                          </div>
+                          <div className="space-y-1 mt-1">
+                            {searchResults.rooms.map((r: any) => (
+                              <button
+                                key={r.id}
+                                type="button"
+                                onClick={() => {
+                                  router.push(`/dashboard/rooms?search=${encodeURIComponent(r.room_number || searchQuery)}`);
+                                  setSearchFocused(false);
+                                }}
+                                className="w-full text-left px-2.5 py-2 rounded-xl bg-[#F5ECDC]/70 hover:bg-[#EFE2CC] border border-[#E8DFCE] flex items-center justify-between transition cursor-pointer"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <BedDouble className="w-4 h-4 text-[#4F0809]" />
+                                  <div>
+                                    <div className="font-bold text-[#4F0809]">Room {r.room_number}</div>
+                                    <div className="text-[10px] text-[#856B4D]">
+                                      {r.room_category || r.room_type_name || 'Deluxe Room'}
+                                    </div>
+                                  </div>
+                                </div>
+                                <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full bg-[#2E7D32]/15 text-[#2E7D32]">
+                                  {r.housekeeping_state || 'available'}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {searchResults.tables.length > 0 && (
+                        <div>
+                          <div className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#856B4D]">
+                            Dining Tables
+                          </div>
+                          <div className="space-y-1 mt-1">
+                            {searchResults.tables.map((t: any) => (
+                              <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => {
+                                  router.push(`/dashboard/tables?search=${encodeURIComponent(t.table_number || searchQuery)}`);
+                                  setSearchFocused(false);
+                                }}
+                                className="w-full text-left px-2.5 py-2 rounded-xl bg-[#F5ECDC]/70 hover:bg-[#EFE2CC] border border-[#E8DFCE] flex items-center justify-between transition cursor-pointer"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <Armchair className="w-4 h-4 text-[#8F6628]" />
+                                  <div>
+                                    <div className="font-bold text-[#4F0809]">{t.table_number}</div>
+                                    <div className="text-[10px] text-[#856B4D]">
+                                      {t.outlet_name || 'Rajmahal Dining'}
+                                    </div>
+                                  </div>
+                                </div>
+                                <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full bg-[#D8AA67]/25 text-[#4F0809]">
+                                  {t.status || 'available'}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Right: Date + Role Selector + Notifications + User Avatar */}
-          <div className="flex items-center space-x-2.5 sm:space-x-3.5">
-            {/* Date Display */}
-            <div className="hidden md:flex items-center space-x-1.5 bg-[#FAF6EF] border border-[#E8DCD2] px-3 py-1.5 rounded-lg text-xs text-stone-700 font-medium">
-              <Calendar className="w-3.5 h-3.5 text-[#B78A48]" />
-              <span>Mon, 19 Oct 2026</span>
+          {/* Right: Real-Time Date + Live Clock + Royal Role Selector + Royal Notifications + User Avatar */}
+          <div className="flex items-center space-x-2 sm:space-x-2.5">
+            {/* Real-Time Date Display + Interactive Mini Calendar Popover */}
+            <div className="relative hidden md:block" ref={calendarRef}>
+              <button
+                type="button"
+                onClick={() => setCalendarOpen(!calendarOpen)}
+                className="flex items-center space-x-1.5 bg-[#F5ECDC] border border-[#D8AA67]/50 hover:border-[#4F0809] px-3 py-1.5 rounded-xl text-xs text-[#4F0809] font-semibold transition-all cursor-pointer shadow-2xs"
+                title="View Palace Calendar"
+              >
+                <Calendar className="w-3.5 h-3.5 text-[#8F6628]" />
+                <span>
+                  {mounted
+                    ? now.toLocaleDateString('en-IN', {
+                        weekday: 'short',
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })
+                    : 'Loading Date...'}
+                </span>
+              </button>
+
+              {calendarOpen && (
+                <div className="absolute right-0 mt-2 w-72 bg-[#FDF8EE] border border-[#D8AA67]/60 rounded-2xl shadow-2xl p-3.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-[#E8DFCE]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (calMonth === 0) {
+                          setCalMonth(11);
+                          setCalYear((y) => y - 1);
+                        } else {
+                          setCalMonth((m) => m - 1);
+                        }
+                      }}
+                      className="w-7 h-7 rounded-lg bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#4F0809] flex items-center justify-center transition cursor-pointer"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <div className="text-xs font-bold text-[#4F0809] tracking-wide">
+                      {new Date(calYear, calMonth, 1).toLocaleDateString('en-IN', {
+                        month: 'long',
+                        year: 'numeric',
+                      })}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (calMonth === 11) {
+                          setCalMonth(0);
+                          setCalYear((y) => y + 1);
+                        } else {
+                          setCalMonth((m) => m + 1);
+                        }
+                      }}
+                      className="w-7 h-7 rounded-lg bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#4F0809] flex items-center justify-center transition cursor-pointer"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-[#856B4D] uppercase mb-1">
+                    {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
+                      <div key={d} className="py-1">{d}</div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1 text-center text-xs">
+                    {Array.from({ length: new Date(calYear, calMonth, 1).getDay() }).map((_, i) => (
+                      <div key={`empty-${i}`} />
+                    ))}
+                    {Array.from({ length: new Date(calYear, calMonth + 1, 0).getDate() }).map((_, idx) => {
+                      const day = idx + 1;
+                      const isToday =
+                        mounted &&
+                        day === now.getDate() &&
+                        calMonth === now.getMonth() &&
+                        calYear === now.getFullYear();
+                      return (
+                        <div
+                          key={day}
+                          className={`h-8 rounded-lg flex items-center justify-center font-semibold transition ${
+                            isToday
+                              ? 'bg-[#4F0809] text-[#FDF8EE] shadow-xs ring-1 ring-[#D8AA67]'
+                              : 'text-[#302421] hover:bg-[#F5ECDC]'
+                          }`}
+                        >
+                          {day}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-2.5 pt-2 border-t border-[#E8DFCE] flex items-center justify-between text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const t = new Date();
+                        setCalMonth(t.getMonth());
+                        setCalYear(t.getFullYear());
+                      }}
+                      className="font-bold text-[#8F6628] hover:text-[#4F0809] transition cursor-pointer"
+                    >
+                      Jump to Today
+                    </button>
+                    <Link
+                      href="/dashboard/bookings"
+                      onClick={() => setCalendarOpen(false)}
+                      className="font-bold text-[#4F0809] hover:underline"
+                    >
+                      View Bookings →
+                    </Link>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Role Selector Dropdown */}
+            {/* Real-Time Clock Time Card */}
+            <div
+              className="hidden lg:flex items-center space-x-2 bg-[#F5ECDC] border border-[#D8AA67]/50 px-3 py-1.5 rounded-xl text-xs text-[#4F0809] font-bold shadow-2xs tabular-nums"
+              title="Real-Time Palace Clock"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[#2E7D32] animate-pulse shrink-0" />
+              <Clock className="w-3.5 h-3.5 text-[#8F6628] shrink-0" />
+              <span>
+                {mounted
+                  ? now.toLocaleTimeString('en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                      hour12: true,
+                    })
+                  : '--:--:-- --'}
+              </span>
+            </div>
+
+            {/* Royal Theme Role Selector Dropdown */}
             <div className="relative" ref={roleRef}>
               <button
                 type="button"
                 onClick={() => setRoleDropdownOpen(!roleDropdownOpen)}
-                className="flex items-center space-x-1.5 bg-[#FAF6EF] border border-[#E8DCD2] hover:border-[#B78A48] px-3 py-1.5 rounded-lg text-xs text-stone-700 font-medium transition-colors cursor-pointer"
+                className="flex items-center space-x-1.5 bg-[#F5ECDC] border border-[#D8AA67]/50 hover:border-[#4F0809] px-3 py-1.5 rounded-xl text-xs text-[#4F0809] font-semibold transition-all cursor-pointer shadow-2xs"
               >
-                <span>Role: <strong className="text-[#302421]">{selectedRole}</strong></span>
-                <ChevronDown className="w-3 h-3 text-stone-500" />
+                <ShieldCheck className="w-3.5 h-3.5 text-[#8F6628]" />
+                <span>Role: <strong className="text-[#4F0809]">{selectedRole}</strong></span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-[#856B4D] transition-transform duration-200 ${
+                    roleDropdownOpen ? 'rotate-180' : ''
+                  }`}
+                />
               </button>
 
               {roleDropdownOpen && (
-                <div className="absolute right-0 mt-1.5 w-48 bg-white border border-[#E8DCD2] rounded-xl shadow-lg py-1.5 z-50 text-xs">
-                  {['Administrator', 'Duty Manager', 'Kitchen Chef', 'Floor Steward', 'Housekeeping Head'].map((role) => (
-                    <button
-                      key={role}
-                      type="button"
-                      onClick={() => {
-                        setSelectedRole(role);
-                        setRoleDropdownOpen(false);
-                      }}
-                      className={`w-full text-left px-3.5 py-1.5 hover:bg-[#FAF6EF] transition-colors flex items-center justify-between ${
-                        selectedRole === role ? 'font-bold text-[#4F0809]' : 'text-stone-700'
-                      }`}
-                    >
-                      <span>{role}</span>
-                      {selectedRole === role && <CheckCircle2 className="w-3.5 h-3.5 text-[#4F0809]" />}
-                    </button>
-                  ))}
+                <div className="absolute right-0 mt-2 w-60 bg-[#FDF8EE] border border-[#D8AA67]/60 rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="bg-gradient-to-r from-[#4F0809] to-[#6B1518] px-3.5 py-2 flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#E1B46F]">
+                      Palace Access Role
+                    </span>
+                    <Sparkles className="w-3 h-3 text-[#D8AA67]" />
+                  </div>
+                  <div className="p-1.5 space-y-1 text-xs">
+                    {PALACE_ROLES.map((role) => {
+                      const IconComp = role.icon;
+                      const isSelected = selectedRole === role.id;
+                      return (
+                        <button
+                          key={role.id}
+                          type="button"
+                          onClick={() => handleRoleSwitch(role.id)}
+                          className={`w-full text-left px-3 py-2 rounded-xl transition-all flex items-center justify-between cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#4F0809] text-[#FDF8EE] shadow-xs'
+                              : 'hover:bg-[#F5ECDC] text-[#302421]'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2.5">
+                            <div
+                              className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                                isSelected ? 'bg-[#6B1518] text-[#D8AA67]' : 'bg-[#F5ECDC] text-[#8F6628]'
+                              }`}
+                            >
+                              <IconComp className="w-3.5 h-3.5" />
+                            </div>
+                            <div>
+                              <div className={`font-bold leading-tight ${isSelected ? 'text-[#FDF8EE]' : 'text-[#4F0809]'}`}>
+                                {role.label}
+                              </div>
+                              <div className={`text-[10px] ${isSelected ? 'text-[#E1B46F]/90' : 'text-[#856B4D]'}`}>
+                                {role.desc}
+                              </div>
+                            </div>
+                          </div>
+                          {isSelected && <Check className="w-4 h-4 text-[#D8AA67] shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Notification Bell */}
+            {/* Royal Theme Notification Bell with Clear Button */}
             <div className="relative" ref={notifRef}>
               <button
                 type="button"
                 onClick={() => setNotificationsOpen(!notificationsOpen)}
-                className="relative p-2 rounded-lg text-stone-600 hover:text-[#4F0809] hover:bg-[#FAF6EF] transition-colors cursor-pointer"
+                className="relative p-2 rounded-xl bg-[#F5ECDC] border border-[#D8AA67]/50 text-[#4F0809] hover:border-[#4F0809] transition-all cursor-pointer shadow-2xs"
                 aria-label="Notifications"
               >
-                <Bell className="w-4 h-4" />
-                <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-[#A81D24] text-white text-[9px] font-bold flex items-center justify-center">
-                  2
-                </span>
+                <Bell className="w-4 h-4 text-[#4F0809]" />
+                {activeAlerts.length > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#A81D24] text-[#FDF8EE] text-[9px] font-bold flex items-center justify-center ring-2 ring-white shadow-xs">
+                    {activeAlerts.length}
+                  </span>
+                )}
               </button>
 
               {notificationsOpen && (
-                <div className="absolute right-0 mt-1.5 w-80 bg-white border border-[#E8DCD2] rounded-xl shadow-xl py-2 z-50 divide-y divide-[#EFE7D8]">
-                  <div className="px-3.5 py-1.5 flex items-center justify-between">
-                    <span className="font-bold text-xs text-[#302421]">Operational Alerts</span>
-                    <span className="text-[10px] text-[#A81D24] font-semibold">2 New</span>
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-[#FDF8EE] border border-[#D8AA67]/60 rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150">
+                  {/* Maroon & Gold Header with Clear Button */}
+                  <div className="bg-gradient-to-r from-[#4F0809] to-[#6B1518] px-4 py-2.5 flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Bell className="w-3.5 h-3.5 text-[#D8AA67]" />
+                      <span className="font-bold text-xs text-[#FDF8EE] tracking-wide">
+                        Operational Alerts
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-[#D8AA67] text-[#4F0809] text-[10px] font-extrabold">
+                        {activeAlerts.length}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleClearAllNotifications}
+                      disabled={activeAlerts.length === 0}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#D8AA67]/20 hover:bg-[#D8AA67]/35 border border-[#D8AA67]/40 text-[#F5ECDC] text-[10px] font-bold uppercase tracking-wider transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      <Trash2 className="w-3 h-3 text-[#D8AA67]" />
+                      <span>Clear</span>
+                    </button>
                   </div>
-                  <div className="p-2 space-y-1.5 text-xs">
-                    <div className="p-2 rounded-lg bg-red-50/70 border border-red-100 flex items-start space-x-2">
-                      <AlertTriangle className="w-4 h-4 text-[#A81D24] shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-semibold text-stone-800 text-[11px]">Low Stock Alert: 5 Items</p>
-                        <p className="text-[10px] text-stone-500">Kashmiri Saffron &amp; Cream below minimum reserve.</p>
+
+                  {/* Alert Items Body */}
+                  <div className="p-2.5 space-y-2 max-h-80 overflow-y-auto text-xs">
+                    {activeAlerts.length === 0 ? (
+                      <div className="py-7 px-4 text-center">
+                        <div className="w-10 h-10 rounded-full bg-[#2E7D32]/15 border border-[#2E7D32]/30 flex items-center justify-center mx-auto mb-2">
+                          <CheckCircle2 className="w-5 h-5 text-[#2E7D32]" />
+                        </div>
+                        <p className="text-xs font-bold text-[#4F0809]">All Palace Alerts Cleared</p>
+                        <p className="text-[11px] text-[#856B4D] mt-0.5">
+                          Operations are running smoothly across Rajmahal Heritage Grand.
+                        </p>
                       </div>
-                    </div>
-                    <div className="p-2 rounded-lg bg-amber-50/70 border border-amber-100 flex items-start space-x-2">
-                      <CheckCircle2 className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-semibold text-stone-800 text-[11px]">VIP Check-in Arrival</p>
-                        <p className="text-[10px] text-stone-500">Vikramaditya Rathore arriving for Haveli Suite 101.</p>
-                      </div>
-                    </div>
+                    ) : (
+                      activeAlerts.map((alert) => (
+                        <div
+                          key={alert.id}
+                          onClick={() => {
+                            router.push(alert.href);
+                            setNotificationsOpen(false);
+                          }}
+                          className="group p-2.5 rounded-xl bg-[#F5ECDC]/80 hover:bg-[#EFE2CC] border border-[#E8DFCE] flex items-start justify-between gap-2.5 transition cursor-pointer"
+                        >
+                          <div className="flex items-start space-x-2.5 min-w-0">
+                            <div
+                              className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                                alert.type === 'warning'
+                                  ? 'bg-[#A81D24]/15 text-[#A81D24]'
+                                  : alert.type === 'success'
+                                  ? 'bg-[#2E7D32]/15 text-[#2E7D32]'
+                                  : 'bg-[#D8AA67]/25 text-[#8F6628]'
+                              }`}
+                            >
+                              {alert.type === 'warning' ? (
+                                <AlertTriangle className="w-3.5 h-3.5" />
+                              ) : (
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="font-bold text-[#4F0809] text-[11px] truncate">
+                                  {alert.title}
+                                </p>
+                              </div>
+                              <p className="text-[10px] text-[#856B4D] leading-snug mt-0.5">
+                                {alert.desc}
+                              </p>
+                              <span className="inline-block text-[9px] font-bold text-[#8F6628] uppercase tracking-wider mt-1">
+                                {alert.time}
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={(e) => handleDismissSingleAlert(alert.id, e)}
+                            title="Dismiss alert"
+                            className="p-1 rounded-md text-[#856B4D] hover:text-[#4F0809] hover:bg-[#E8DFCE] opacity-60 group-hover:opacity-100 transition cursor-pointer shrink-0"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               )}
             </div>
 
-            {/* User Profile Avatar matching Screenshot */}
+            {/* User Profile Avatar */}
             <div className="relative" ref={userRef}>
               <button
                 type="button"
@@ -742,20 +1449,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <span className="text-xs font-bold text-[#302421] truncate max-w-[120px]">
                     {staffInfo?.name || 'Staff'}
                   </span>
-                  <span className="text-[10px] text-stone-500 mt-0.5 capitalize">
-                    {staffInfo?.role || selectedRole}
+                  <span className="text-[10px] text-[#8F6628] font-semibold mt-0.5">
+                    {selectedRole}
                   </span>
                 </div>
               </button>
 
               {userDropdownOpen && (
-                <div className="absolute right-0 mt-1.5 w-56 bg-white border border-[#E8DCD2] rounded-xl shadow-xl py-1.5 z-50 text-xs divide-y divide-[#EFE7D8]">
+                <div className="absolute right-0 mt-1.5 w-56 bg-[#FDF8EE] border border-[#D8AA67]/60 rounded-2xl shadow-2xl py-1.5 z-50 text-xs divide-y divide-[#EFE7D8]">
                   <div className="px-3.5 py-2">
-                    <p className="font-bold text-[#302421] truncate">
+                    <p className="font-bold text-[#4F0809] truncate">
                       {staffInfo?.name || 'Staff Member'}
                     </p>
-                    <p className="text-[10px] text-stone-500 truncate mt-0.5">
-                      {staffInfo?.email || 'Registered Staff'} • <span className="capitalize">{staffInfo?.role || selectedRole}</span>
+                    <p className="text-[10px] text-[#856B4D] truncate mt-0.5">
+                      {staffInfo?.email || 'Registered Staff'} • <span>{selectedRole}</span>
                     </p>
                   </div>
                   <div className="py-1">

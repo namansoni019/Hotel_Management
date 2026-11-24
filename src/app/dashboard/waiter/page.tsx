@@ -114,7 +114,7 @@ export default function FloorStewardPage() {
         <div>
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded bg-[#4F0809] text-[#E1B46F] text-[10px] font-bold uppercase tracking-wider">
-              Simulated Role: Floor Steward
+              Simulated Role: Waiter
             </span>
             <span className="w-2 h-2 rounded-full bg-[#2E7D32] animate-pulse" />
           </div>
@@ -122,7 +122,7 @@ export default function FloorStewardPage() {
             className="text-2xl font-bold text-[#4F0809] mt-0.5"
             style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
           >
-            Floor Steward &amp; In-Room Dining Service
+            Waiter &amp; In-Room Dining Service
           </h1>
           <p className="text-xs text-[#81736D] mt-0.5">
             Deliver ready KOT orders directly to restaurant tables and palace royal suites

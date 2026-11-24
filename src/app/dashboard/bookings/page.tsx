@@ -156,6 +156,10 @@ export default function RoomBookingsPage() {
 
     if (typeof window !== 'undefined') {
       try {
+        const params = new URLSearchParams(window.location.search);
+        const searchVal = params.get('search');
+        if (searchVal) setSearchQuery(searchVal);
+
         const cached = localStorage.getItem('rajmahal_rooms');
         if (cached) {
           const parsed = JSON.parse(cached);
