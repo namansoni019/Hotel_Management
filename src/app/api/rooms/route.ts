@@ -23,6 +23,14 @@ export async function GET() {
           const roomImages = Array.isArray(rawImages) && rawImages.length > 0
             ? rawImages
             : (matchedType.photos ? [...matchedType.photos] : []);
+
+          const isNonDeluxe =
+            typeId === 'd0000000-0000-0000-0000-000000000002' ||
+            (data.room_type_name && data.room_type_name.toLowerCase().includes('non')) ||
+            (data.room_category && data.room_category.toLowerCase().includes('non'));
+
+          const categoryName = data.room_category || data.room_type_name || matchedType.name;
+
           return {
             id: d.id,
             room_number: data.room_number,
@@ -31,7 +39,22 @@ export async function GET() {
             notes: data.notes || null,
             images: roomImages,
             photos: roomImages,
-            room_type: data.room_type || matchedType,
+            room_category: categoryName,
+            room_type_name: categoryName,
+            category_badge: data.category_badge || (isNonDeluxe ? 'HERITAGE STANDARD' : 'ROYAL LUXURY'),
+            base_rate_minor: data.base_rate_minor ?? matchedType.base_rate_minor,
+            price_per_night: data.price_per_night ?? Math.round((data.base_rate_minor ?? matchedType.base_rate_minor) / 100),
+            capacity: data.capacity ?? matchedType.capacity,
+            bed_type: data.bed_type || (isNonDeluxe ? 'Classic Double Bed' : 'Plush King Bed'),
+            amenities: data.amenities || matchedType.amenities,
+            description: data.description || matchedType.description,
+            room_type: data.room_type || {
+              ...matchedType,
+              name: categoryName,
+              base_rate_minor: data.base_rate_minor ?? matchedType.base_rate_minor,
+              amenities: data.amenities || matchedType.amenities,
+              photos: roomImages,
+            },
           } as Room;
         });
       }
@@ -43,17 +66,7 @@ export async function GET() {
       rooms = dataRepository.getRooms();
     }
 
-    // Ensure all rooms have valid room_type joined
-    const populatedRooms = rooms.map((r) => {
-      const typeId = r.room_type_id || roomTypes[0].id;
-      const matchedType = roomTypes.find((rt) => rt.id === typeId) || roomTypes[0];
-      return {
-        ...r,
-        room_type: r.room_type || matchedType,
-      };
-    });
-
-    return NextResponse.json({ success: true, roomTypes, rooms: populatedRooms });
+    return NextResponse.json({ success: true, roomTypes, rooms });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
@@ -83,10 +96,14 @@ export async function POST(request: Request) {
       matchedType = roomTypes[0];
     }
 
+    const isNonDeluxe =
+      matchedType.id === 'd0000000-0000-0000-0000-000000000002' ||
+      matchedType.name.toLowerCase().includes('non');
+
     const roomId = `room-${Date.now()}`;
     const cleanNumber = String(room_number).replace(/^(room|chamber)\s*/i, '').trim();
 
-    const inputImages = Array.isArray(images) && images.length > 0
+    const inputImages: string[] = Array.isArray(images) && images.length > 0
       ? images
       : (Array.isArray(photos) && photos.length > 0 ? photos : (matchedType.photos ? [...matchedType.photos] : []));
 
@@ -94,25 +111,55 @@ export async function POST(request: Request) {
       id: roomId,
       room_number: cleanNumber,
       room_type_id: matchedType.id,
-      room_type: matchedType,
+      room_category: matchedType.name,
+      room_type_name: matchedType.name,
+      category_badge: isNonDeluxe ? 'HERITAGE STANDARD' : 'ROYAL LUXURY',
+      base_rate_minor: matchedType.base_rate_minor,
+      price_per_night: Math.round(matchedType.base_rate_minor / 100),
+      capacity: matchedType.capacity,
+      bed_type: isNonDeluxe ? 'Classic Double Bed' : 'Plush King Bed',
+      amenities: matchedType.amenities,
+      description: matchedType.description,
       housekeeping_state: housekeeping_state || 'available',
       notes: notes || null,
       images: inputImages,
       photos: inputImages,
+      room_type: {
+        id: matchedType.id,
+        property_id: matchedType.property_id || 'd0000000-0000-0000-0000-000000000001',
+        name: matchedType.name,
+        description: matchedType.description,
+        capacity: matchedType.capacity,
+        total_rooms: matchedType.total_rooms || 20,
+        base_rate_minor: matchedType.base_rate_minor,
+        amenities: matchedType.amenities,
+        photos: inputImages,
+        is_active: true,
+        created_at: new Date().toISOString(),
+      },
     };
 
-    // Save to Firestore
+    // Save to Firestore rooms collection with ALL details embedded directly
     try {
       await setDoc(doc(db, 'rooms', roomId), {
         id: roomId,
         room_number: cleanNumber,
         room_type_id: matchedType.id,
+        room_category: matchedType.name,
         room_type_name: matchedType.name,
+        category_badge: isNonDeluxe ? 'HERITAGE STANDARD' : 'ROYAL LUXURY',
+        base_rate_minor: matchedType.base_rate_minor,
+        price_per_night: Math.round(matchedType.base_rate_minor / 100),
+        capacity: matchedType.capacity,
+        bed_type: isNonDeluxe ? 'Classic Double Bed' : 'Plush King Bed',
+        amenities: matchedType.amenities,
+        description: matchedType.description,
         housekeeping_state: housekeeping_state || 'available',
         notes: notes || null,
         images: inputImages,
         photos: inputImages,
         created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
       });
     } catch (err) {
       console.warn('Firestore POST /api/rooms fallback to memory:', err);
@@ -121,7 +168,6 @@ export async function POST(request: Request) {
     // Save to memory repository
     const addedLocal = dataRepository.addRoom(roomData);
     addedLocal.id = roomId;
-    addedLocal.room_type = matchedType;
 
     return NextResponse.json({ success: true, room: roomData }, { status: 201 });
   } catch (error: any) {

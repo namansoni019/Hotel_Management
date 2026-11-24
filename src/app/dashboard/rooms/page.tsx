@@ -194,15 +194,37 @@ export default function RoomsHousekeepingPage() {
             const data = d.data();
             const typeId = data.room_type_id || rts[0]?.id;
             const matchedType = rts.find((rt) => rt.id === typeId) || rts[0];
+            const isNonDeluxe =
+              typeId === 'd0000000-0000-0000-0000-000000000002' ||
+              (data.room_type_name && data.room_type_name.toLowerCase().includes('non')) ||
+              (data.room_category && data.room_category.toLowerCase().includes('non'));
+            const categoryName = data.room_category || data.room_type_name || matchedType.name;
+            const photos = data.images || data.photos || matchedType.photos || [];
+
             return {
               id: d.id,
               room_number: data.room_number,
               room_type_id: typeId,
               housekeeping_state: data.housekeeping_state || 'available',
               notes: data.notes || null,
-              images: data.images || data.photos || [],
-              photos: data.photos || data.images || [],
-              room_type: data.room_type || matchedType,
+              images: photos,
+              photos: photos,
+              room_category: categoryName,
+              room_type_name: categoryName,
+              category_badge: data.category_badge || (isNonDeluxe ? 'HERITAGE STANDARD' : 'ROYAL LUXURY'),
+              base_rate_minor: data.base_rate_minor ?? matchedType.base_rate_minor,
+              price_per_night: data.price_per_night ?? Math.round((data.base_rate_minor ?? matchedType.base_rate_minor) / 100),
+              capacity: data.capacity ?? matchedType.capacity,
+              bed_type: data.bed_type || (isNonDeluxe ? 'Classic Double Bed' : 'Plush King Bed'),
+              amenities: data.amenities || matchedType.amenities,
+              description: data.description || matchedType.description,
+              room_type: data.room_type || {
+                ...matchedType,
+                name: categoryName,
+                base_rate_minor: data.base_rate_minor ?? matchedType.base_rate_minor,
+                amenities: data.amenities || matchedType.amenities,
+                photos: photos,
+              },
             } as Room;
           });
           setRooms(liveRooms);
@@ -554,9 +576,19 @@ export default function RoomsHousekeepingPage() {
                     </div>
                   </div>
 
-                  <div className="text-[10px] text-[#81736D] truncate mb-2">
-                    {room.room_type?.name || 'Heritage Suite'}
+                  <div className="flex items-center justify-between text-[10px] text-[#81736D] mb-1">
+                    <span className="font-semibold text-[#8F6628] truncate">
+                      {room.room_category || room.room_type?.name || 'Deluxe Room'}
+                    </span>
+                    <span className="font-bold text-[#4F0809] shrink-0">
+                      ₹{((room.base_rate_minor || room.room_type?.base_rate_minor || 650000) / 100).toLocaleString('en-IN')}/nt
+                    </span>
                   </div>
+                  {room.bed_type && (
+                    <div className="text-[9px] text-[#81736D] truncate mb-2">
+                      {room.bed_type}
+                    </div>
+                  )}
                 </div>
 
                 {/* Quick Actions Dropdown */}

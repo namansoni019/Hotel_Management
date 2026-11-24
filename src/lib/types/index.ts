@@ -96,11 +96,11 @@ export interface BillingSettings {
 // ── Room Type ──
 export interface RoomType {
   id: string;
-  property_id: string;
+  property_id?: string;
   name: string;
   description: string;
   capacity: number;
-  total_rooms: number;
+  total_rooms?: number;
   base_rate_minor: number;
   amenities: string[];
   photos: string[];
@@ -118,6 +118,16 @@ export interface Room {
   images?: string[];
   photos?: string[];
   room_type?: RoomType;
+  // Embedded Room Details
+  room_category?: string;
+  room_type_name?: string;
+  category_badge?: string;
+  base_rate_minor?: number;
+  price_per_night?: number;
+  capacity?: number;
+  bed_type?: string;
+  amenities?: string[];
+  description?: string;
 }
 
 // ── Guest ──

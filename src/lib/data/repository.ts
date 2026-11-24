@@ -133,10 +133,23 @@ export const dataRepository = {
     return roomTypesState.find((rt) => rt.id === id);
   },
   getRooms(): Room[] {
-    return roomsState.map((r) => ({
-      ...r,
-      room_type: roomTypesState.find((rt) => rt.id === r.room_type_id),
-    }));
+    return roomsState.map((r) => {
+      const rt = roomTypesState.find((t) => t.id === r.room_type_id) || roomTypesState[0];
+      const isNonDeluxe = rt.id === 'd0000000-0000-0000-0000-000000000002' || rt.name.toLowerCase().includes('non');
+      return {
+        ...r,
+        room_category: r.room_category || rt.name,
+        room_type_name: r.room_type_name || rt.name,
+        category_badge: r.category_badge || (isNonDeluxe ? 'HERITAGE STANDARD' : 'ROYAL LUXURY'),
+        base_rate_minor: r.base_rate_minor ?? rt.base_rate_minor,
+        price_per_night: r.price_per_night ?? Math.round(rt.base_rate_minor / 100),
+        capacity: r.capacity ?? rt.capacity,
+        bed_type: r.bed_type || (isNonDeluxe ? 'Classic Double Bed' : 'Plush King Bed'),
+        amenities: r.amenities || rt.amenities,
+        description: r.description || rt.description,
+        room_type: r.room_type || rt,
+      };
+    });
   },
   updateRoomHousekeeping(roomId: string, state: Room['housekeeping_state']): Room | null {
     const idx = roomsState.findIndex((r) => r.id === roomId);
@@ -144,12 +157,40 @@ export const dataRepository = {
     roomsState[idx] = { ...roomsState[idx], housekeeping_state: state };
     return roomsState[idx];
   },
-  addRoom(room: { room_number: string; room_type_id: string; housekeeping_state: Room['housekeeping_state']; notes?: string | null; images?: string[]; photos?: string[]; room_type?: RoomType }): Room {
+  addRoom(room: {
+    id?: string;
+    room_number: string;
+    room_type_id: string;
+    housekeeping_state: Room['housekeeping_state'];
+    notes?: string | null;
+    images?: string[];
+    photos?: string[];
+    room_type?: RoomType;
+    room_category?: string;
+    room_type_name?: string;
+    category_badge?: string;
+    base_rate_minor?: number;
+    price_per_night?: number;
+    capacity?: number;
+    bed_type?: string;
+    amenities?: string[];
+    description?: string;
+  }): Room {
     const matchedType = room.room_type || roomTypesState.find((rt) => rt.id === room.room_type_id) || roomTypesState[0];
+    const isNonDeluxe = matchedType.id === 'd0000000-0000-0000-0000-000000000002' || matchedType.name.toLowerCase().includes('non');
     const newRoom: Room = {
-      id: `room-${Date.now()}`,
+      id: room.id || `room-${Date.now()}`,
       room_number: room.room_number,
       room_type_id: matchedType.id,
+      room_category: room.room_category || matchedType.name,
+      room_type_name: room.room_type_name || matchedType.name,
+      category_badge: room.category_badge || (isNonDeluxe ? 'HERITAGE STANDARD' : 'ROYAL LUXURY'),
+      base_rate_minor: room.base_rate_minor ?? matchedType.base_rate_minor,
+      price_per_night: room.price_per_night ?? Math.round(matchedType.base_rate_minor / 100),
+      capacity: room.capacity ?? matchedType.capacity,
+      bed_type: room.bed_type || (isNonDeluxe ? 'Classic Double Bed' : 'Plush King Bed'),
+      amenities: room.amenities || matchedType.amenities,
+      description: room.description || matchedType.description,
       room_type: matchedType,
       housekeeping_state: room.housekeeping_state,
       notes: room.notes || null,
