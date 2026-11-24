@@ -32,12 +32,46 @@ import { db } from '@/lib/firebase';
 import { dataRepository } from '@/lib/data/repository';
 import type { Table, TableReservation, Outlet } from '@/lib/types';
 
+export function getTableCategory(t: Table): 'room' | 'cafe' | 'hall' | 'restaurant' {
+  const num = (t.table_number || '').toLowerCase();
+  const loc = (t.location || '').toLowerCase();
+
+  if (
+    num.startsWith('room') ||
+    num.startsWith('r-') ||
+    loc.includes('room') ||
+    loc.includes('suite') ||
+    loc.includes('chamber')
+  ) {
+    return 'room';
+  }
+  if (
+    num.startsWith('h-') ||
+    num.startsWith('hall') ||
+    loc.includes('hall') ||
+    loc.includes('banquet') ||
+    loc.includes('party')
+  ) {
+    return 'hall';
+  }
+  if (
+    num.startsWith('c-') ||
+    t.outlet_id === 'b0000000-0000-0000-0000-000000000002' ||
+    loc.includes('cafe') ||
+    loc.includes('courtyard')
+  ) {
+    return 'cafe';
+  }
+  return 'restaurant';
+}
+
 export default function TablesReservationsPage() {
   const [tables, setTables] = useState<Table[]>([]);
   const [reservations, setReservations] = useState<TableReservation[]>([]);
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [activeTab, setActiveTab] = useState<'tables' | 'reservations'>('tables');
   const [outletFilter, setOutletFilter] = useState('all');
+  const [venueFilter, setVenueFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -48,7 +82,7 @@ export default function TablesReservationsPage() {
   // QR Modal
   const [qrModalTable, setQrModalTable] = useState<Table | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [qrVenue, setQrVenue] = useState<'restaurant' | 'cafe'>('restaurant');
+  const [qrVenue, setQrVenue] = useState<'restaurant' | 'cafe' | 'room'>('restaurant');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
 
   // In-app Delete Confirmation Modal (Reliable, no browser alert/confirm blocks)
@@ -167,40 +201,56 @@ export default function TablesReservationsPage() {
     return () => window.removeEventListener('click', handleOutsideClick);
   }, []);
 
-  // Filtered Tables
-  const filteredTables = useMemo(() => {
-    return tables.filter((t) => {
-      const matchesOutlet = outletFilter === 'all' || t.outlet_id === outletFilter;
-      const matchesSearch =
-        !searchQuery ||
-        t.table_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (t.location && t.location.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchesOutlet && matchesSearch;
-    });
-  }, [tables, outletFilter, searchQuery]);
-
-  // Filtered Reservations
-  const filteredReservations = useMemo(() => {
-    return reservations.filter((r) => {
-      const q = searchQuery.toLowerCase();
-      const matchesSearch =
-        !q ||
-        r.guest_name.toLowerCase().includes(q) ||
-        r.phone.toLowerCase().includes(q) ||
-        r.table_number.toLowerCase().includes(q) ||
-        r.id.toLowerCase().includes(q);
-      const matchesOutlet = outletFilter === 'all' || r.outlet_id === outletFilter;
-      const matchesStatus = statusFilter === 'all' || r.status === statusFilter;
-      return matchesSearch && matchesOutlet && matchesStatus;
-    });
-  }, [reservations, searchQuery, outletFilter, statusFilter]);
-
   // Real Calculated Metrics
   const totalTables = tables.length;
   const occupiedTables = tables.filter((t) => t.status === 'occupied').length;
   const reservedTables = tables.filter((t) => t.status === 'reserved').length;
   const cleaningTables = tables.filter((t) => t.status === 'cleaning').length;
   const availableTables = tables.filter((t) => (t.status || 'available') === 'available').length;
+
+  const restaurantCount = tables.filter((t) => getTableCategory(t) === 'restaurant').length;
+  const cafeCount = tables.filter((t) => getTableCategory(t) === 'cafe').length;
+  const roomCount = tables.filter((t) => getTableCategory(t) === 'room').length;
+  const hallCount = tables.filter((t) => getTableCategory(t) === 'hall').length;
+
+  // Filtered Tables
+  const filteredTables = useMemo(() => {
+    return tables.filter((t) => {
+      const cat = getTableCategory(t);
+      const matchesVenue =
+        venueFilter === 'all' ||
+        cat === venueFilter ||
+        t.outlet_id === venueFilter;
+      const matchesStatus =
+        statusFilter === 'all' || (t.status || 'available') === statusFilter;
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        t.table_number.toLowerCase().includes(q) ||
+        (t.location && t.location.toLowerCase().includes(q)) ||
+        cat.includes(q);
+      return matchesVenue && matchesStatus && matchesSearch;
+    });
+  }, [tables, venueFilter, statusFilter, searchQuery]);
+
+  // Filtered Reservations
+  const filteredReservations = useMemo(() => {
+    return reservations.filter((r) => {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        r.guest_name.toLowerCase().includes(q) ||
+        r.phone.toLowerCase().includes(q) ||
+        r.table_number.toLowerCase().includes(q) ||
+        r.id.toLowerCase().includes(q);
+      const matchesOutlet =
+        venueFilter === 'all' ||
+        r.outlet_id === venueFilter ||
+        (venueFilter === 'room' && r.table_number.toLowerCase().startsWith('room'));
+      const matchesStatus = statusFilter === 'all' || r.status === statusFilter;
+      return matchesSearch && matchesOutlet && matchesStatus;
+    });
+  }, [reservations, searchQuery, venueFilter, statusFilter]);
 
   // Actions: Update Table Status via interactive dropper
   const handleUpdateTableStatus = async (tableId: string, newStatus: Table['status']) => {
@@ -493,8 +543,8 @@ export default function TablesReservationsPage() {
       setQrDataUrl('');
       return;
     }
-    const venueCode = qrVenue === 'cafe' ? 'c' : 'r';
-    const targetPath = `/menu?qr=${venueCode}&table=${qrModalTable.table_number}`;
+    const venueCode = qrVenue === 'room' ? 'room' : qrVenue === 'cafe' ? 'c' : 'r';
+    const targetPath = `/menu?qr=${venueCode}&table=${encodeURIComponent(qrModalTable.table_number)}`;
     const fullUrl = typeof window !== 'undefined' ? `${window.location.origin}${targetPath}` : targetPath;
 
     QRCode.toDataURL(fullUrl, {
@@ -507,9 +557,12 @@ export default function TablesReservationsPage() {
   }, [qrModalTable, qrVenue]);
 
   const copyQRLink = (tableNumber: string) => {
-    const venueCode = qrVenue === 'cafe' ? 'c' : 'r';
-    const url = `${window.location.origin}/menu?qr=${venueCode}&table=${tableNumber}`;
-    navigator.clipboard.writeText(url);
+    const venueCode = qrVenue === 'room' ? 'room' : qrVenue === 'cafe' ? 'c' : 'r';
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const url = `${origin}/menu?qr=${venueCode}&table=${encodeURIComponent(tableNumber)}`;
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(url);
+    }
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
@@ -664,69 +717,130 @@ export default function TablesReservationsPage() {
         </div>
       </div>
 
-      {/* ── View Switcher & Filters ── */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white border border-[#E8DCD2] rounded-xl p-3 shadow-xs">
-        <div className="flex items-center gap-1.5 w-full sm:w-auto">
-          <button
-            onClick={() => setActiveTab('tables')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-              activeTab === 'tables'
-                ? 'bg-[#4F0809] text-white shadow-xs'
-                : 'bg-[#FBF6EF] text-[#81736D] hover:text-[#302421]'
-            }`}
-          >
-            Floor Table Grid ({totalTables})
-          </button>
-          <button
-            onClick={() => setActiveTab('reservations')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
-              activeTab === 'reservations'
-                ? 'bg-[#4F0809] text-white shadow-xs'
-                : 'bg-[#FBF6EF] text-[#81736D] hover:text-[#302421]'
-            }`}
-          >
-            Table Reservations List ({reservations.length})
-          </button>
-        </div>
+      {/* ── View Switcher & Royal Heritage Palace Filters Bar ── */}
+      <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-2xl p-4 shadow-xs space-y-3">
+        {/* Row 1: Mode Switcher Tabs + Search Bar */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 w-full sm:w-auto">
+            <button
+              onClick={() => setActiveTab('tables')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-2 ${
+                activeTab === 'tables'
+                  ? 'bg-[#4F0809] text-[#FFF8EB] border border-[#D8AA67] shadow-sm'
+                  : 'bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#856B4D] border border-[#E8DFCE]'
+              }`}
+            >
+              <Armchair className="w-4 h-4 text-[#D8AA67]" />
+              <span>Floor Table Grid</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  activeTab === 'tables' ? 'bg-[#D8AA67] text-[#4F0809]' : 'bg-[#E8DFCE] text-[#4F0809]'
+                }`}
+              >
+                {totalTables}
+              </span>
+            </button>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
-          <div className="relative w-full sm:w-52">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#81736D]" />
+            <button
+              onClick={() => setActiveTab('reservations')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-2 ${
+                activeTab === 'reservations'
+                  ? 'bg-[#4F0809] text-[#FFF8EB] border border-[#D8AA67] shadow-sm'
+                  : 'bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#856B4D] border border-[#E8DFCE]'
+              }`}
+            >
+              <Calendar className="w-4 h-4 text-[#D8AA67]" />
+              <span>Table Reservations List</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  activeTab === 'reservations' ? 'bg-[#D8AA67] text-[#4F0809]' : 'bg-[#E8DFCE] text-[#4F0809]'
+                }`}
+              >
+                {reservations.length}
+              </span>
+            </button>
+          </div>
+
+          <div className="relative w-full sm:w-64">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#856B4D]" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search table, guest, code..."
-              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-[#E8DCD2] text-xs bg-[#FBF6EF]/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#4F0809]"
+              placeholder="Search table, room, guest..."
+              className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#D8AA67]/60 text-xs bg-[#FAF6EF] text-[#4F0809] placeholder-[#856B4D]/60 focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#4F0809] font-medium"
             />
           </div>
+        </div>
 
-          <select
-            value={outletFilter}
-            onChange={(e) => setOutletFilter(e.target.value)}
-            className="px-2.5 py-1.5 rounded-lg border border-[#E8DCD2] text-xs bg-white focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
-          >
-            <option value="all">All Palace Outlets</option>
-            {outlets.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
+        {/* Row 2: Category Quick Chips & Dropdowns */}
+        <div className="pt-2 border-t border-[#E8DFCE] flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+          {/* Quick Category Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
+            {[
+              { id: 'all', label: 'All Tables & Rooms', icon: '🏛️', count: totalTables },
+              { id: 'restaurant', label: 'Restaurant', icon: '🍽️', count: restaurantCount },
+              { id: 'cafe', label: 'Café & Lounge', icon: '☕', count: cafeCount },
+              { id: 'room', label: 'Room Tables', icon: '🛏️', count: roomCount },
+              { id: 'hall', label: 'Celebration Hall', icon: '🎉', count: hallCount },
+            ].map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => setVenueFilter(v.id as any)}
+                className={`px-3 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                  venueFilter === v.id
+                    ? 'bg-[#4F0809] text-[#FFF8EB] border border-[#D8AA67] shadow-xs'
+                    : 'bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#856B4D] border border-[#E8DFCE]'
+                }`}
+              >
+                <span>{v.icon}</span>
+                <span>{v.label}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    venueFilter === v.id ? 'bg-[#D8AA67] text-[#4F0809]' : 'bg-[#E8DFCE] text-[#4F0809]'
+                  }`}
+                >
+                  {v.count}
+                </span>
+              </button>
             ))}
-          </select>
+          </div>
 
-          {activeTab === 'reservations' && (
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-2.5 py-1.5 rounded-lg border border-[#E8DCD2] text-xs bg-white focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
-            >
-              <option value="all">All Statuses</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="seated">Seated</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-          )}
+          {/* Palace Dropdowns */}
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            {/* Palace Venue / Room Dropdown */}
+            <div className="relative">
+              <select
+                value={venueFilter}
+                onChange={(e) => setVenueFilter(e.target.value)}
+                className="appearance-none pl-3 pr-8 py-1.5 rounded-xl border border-[#D8AA67]/60 bg-[#FAF6EF] hover:bg-white text-xs font-bold text-[#4F0809] focus:ring-1 focus:ring-[#4F0809] focus:outline-none transition cursor-pointer shadow-2xs"
+              >
+                <option value="all">All Venues &amp; Room Tables ({totalTables})</option>
+                <option value="restaurant">🍽️ Rajmahal Royal Dining ({restaurantCount})</option>
+                <option value="cafe">☕ The Palace Courtyard Café ({cafeCount})</option>
+                <option value="room">🛏️ In-Room Dining / Room Tables ({roomCount})</option>
+                <option value="hall">🎉 Grand Celebration Hall ({hallCount})</option>
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-[#856B4D]" />
+            </div>
+
+            {/* Table State Filter */}
+            <div className="relative">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="appearance-none pl-3 pr-8 py-1.5 rounded-xl border border-[#D8AA67]/60 bg-[#FAF6EF] hover:bg-white text-xs font-bold text-[#4F0809] focus:ring-1 focus:ring-[#4F0809] focus:outline-none transition cursor-pointer shadow-2xs"
+              >
+                <option value="all">All Statuses</option>
+                <option value="available">● Available Ready</option>
+                <option value="occupied">● Occupied Live</option>
+                <option value="reserved">● Reserved</option>
+                <option value="cleaning">● Needs Cleaning</option>
+              </select>
+              <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-[#856B4D]" />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -734,13 +848,16 @@ export default function TablesReservationsPage() {
       {activeTab === 'tables' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredTables.length === 0 ? (
-            <div className="col-span-full py-12 text-center bg-white border border-[#E8DCD2] rounded-xl text-xs text-[#81736D]">
-              No tables found matching your search and filter criteria.
+            <div className="col-span-full py-12 text-center bg-[#FDF8EE] border border-[#E8DFCE] rounded-2xl text-xs text-[#856B4D]">
+              <Armchair className="w-8 h-8 text-[#D8AA67] mx-auto mb-2 opacity-60" />
+              <p className="font-semibold text-sm text-[#4F0809]">No dining tables or rooms found</p>
+              <p className="text-[11px] text-[#856B4D] mt-1">Try changing your venue filter or search query.</p>
             </div>
           ) : (
             filteredTables.map((table) => {
               const currentStatus = table.status || 'available';
               const outletObj = outlets.find((o) => o.id === table.outlet_id);
+              const tableCat = getTableCategory(table);
               const qrTokenStr =
                 table.code || `table-${table.table_number.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
 
@@ -750,17 +867,26 @@ export default function TablesReservationsPage() {
               const isAvailable = currentStatus === 'available';
 
               const cardBg = isOccupied
-                ? 'bg-[#4F0809] text-white border-[#4F0809]'
+                ? 'bg-[#4F0809] text-[#FFF8EB] border-[#4F0809] shadow-md ring-1 ring-[#D8AA67]/40'
                 : isReserved
-                ? 'bg-[#B78A48]/10 text-[#6B4E1B] border-[#B78A48]/40'
+                ? 'bg-[#FDF8EE] text-[#6B4E1B] border-[#D8AA67]/80 shadow-xs'
                 : isCleaning
-                ? 'bg-amber-50 text-amber-900 border-amber-200'
-                : 'bg-white text-[#302421] border-[#E8DCD2]';
+                ? 'bg-amber-50/90 text-amber-900 border-amber-300'
+                : 'bg-[#FDF8EE] text-[#4F0809] border-[#E8DFCE] hover:border-[#D8AA67]';
+
+              const catBadge =
+                tableCat === 'room'
+                  ? { label: 'In-Room Dining', icon: '🛏️', style: isOccupied ? 'bg-white/15 text-[#FFF8EB] border-white/20' : 'bg-[#4F0809]/10 text-[#4F0809] border-[#D8AA67]/50' }
+                  : tableCat === 'cafe'
+                  ? { label: 'Courtyard Café', icon: '☕', style: isOccupied ? 'bg-white/15 text-[#FFF8EB] border-white/20' : 'bg-[#B78A48]/15 text-[#856B4D] border-[#D8AA67]/40' }
+                  : tableCat === 'hall'
+                  ? { label: 'Celebration Hall', icon: '🎉', style: isOccupied ? 'bg-white/15 text-[#FFF8EB] border-white/20' : 'bg-purple-100/60 text-purple-900 border-purple-200' }
+                  : { label: 'Royal Dining', icon: '🍽️', style: isOccupied ? 'bg-white/15 text-[#FFF8EB] border-white/20' : 'bg-[#FAF4E8] text-[#856B4D] border-[#E8DCD2]' };
 
               return (
                 <div
                   key={table.id}
-                  className={`p-4 rounded-xl border shadow-xs transition hover:shadow-md flex flex-col justify-between relative min-h-[175px] ${cardBg}`}
+                  className={`p-4 rounded-2xl border shadow-xs transition hover:shadow-md flex flex-col justify-between relative min-h-[175px] ${cardBg}`}
                 >
                   {/* Top Bar: Table Number, Outlet Badge & Status Dropper */}
                   <div>
@@ -774,19 +900,16 @@ export default function TablesReservationsPage() {
                             {table.table_number}
                           </span>
                           <span
-                            className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border ${
-                              isOccupied
-                                ? 'bg-white/10 text-white/90 border-white/20'
-                                : 'bg-[#FBF6EF] text-[#670E10] border-[#E8DCD2]'
-                            }`}
+                            className={`text-[9px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${catBadge.style}`}
                           >
-                            {outletObj?.type === 'cafe' ? 'Café' : 'Restaurant'}
+                            <span>{catBadge.icon}</span>
+                            <span>{catBadge.label}</span>
                           </span>
                         </div>
-                        <div className="text-[11px] opacity-80 flex items-center gap-1 mt-1">
-                          <MapPin className="w-3 h-3 shrink-0" />
+                        <div className="text-[11px] opacity-80 flex items-center gap-1 mt-1 font-medium">
+                          <MapPin className="w-3 h-3 shrink-0 text-[#D8AA67]" />
                           <span className="truncate max-w-[140px]">
-                            {table.location || 'Palace Dining Hall'}
+                            {table.location || (tableCat === 'room' ? 'In-Suite Chamber Dining' : 'Palace Dining Hall')}
                           </span>
                         </div>
                       </div>
@@ -881,14 +1004,17 @@ export default function TablesReservationsPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        setQrVenue(outletObj?.type === 'cafe' ? 'cafe' : 'restaurant');
+                        const cat = getTableCategory(table);
+                        setQrVenue(cat === 'room' ? 'room' : cat === 'cafe' ? 'cafe' : 'restaurant');
                         setQrModalTable(table);
                       }}
                       title="View digital dining QR token and URL"
                       className="flex items-center gap-1 text-[11px] font-mono font-semibold opacity-90 hover:opacity-100 transition underline underline-offset-2 cursor-pointer truncate max-w-[170px]"
                     >
                       <QrCode className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">QR: menu?qr={outletObj?.type === 'cafe' ? 'c' : 'r'}&amp;table={table.table_number}</span>
+                      <span className="truncate">
+                        QR: menu?qr={tableCat === 'room' ? 'room' : tableCat === 'cafe' ? 'c' : 'r'}&amp;table={table.table_number}
+                      </span>
                     </button>
 
                     {/* Action Buttons: EDIT & DELETE */}
@@ -1037,76 +1163,146 @@ export default function TablesReservationsPage() {
         </div>
       )}
 
-      {/* ── MODAL: Edit Dining Table ── */}
+      {/* ── MODAL: Edit Dining Table (Palace Heritage Theme) ── */}
       {isEditTableOpen && editingTable && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-[#E8DCD2] rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
-            <button
-              onClick={() => setIsEditTableOpen(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-[#FBF6EF] text-[#81736D] cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <div className="flex items-center gap-2 mb-1">
-              <Pencil className="w-5 h-5 text-[#B78A48]" />
-              <h2
-                className="text-xl font-bold text-[#4F0809]"
-                style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-3xl max-w-md w-full overflow-hidden shadow-2xl relative text-[#4F0809] animate-fade-in">
+            {/* Royal Maroon Header */}
+            <div className="bg-gradient-to-r from-[#4F0809] via-[#651012] to-[#4F0809] text-[#FFF8EB] p-5 relative border-b border-[#D8AA67]/40">
+              <button
+                type="button"
+                onClick={() => setIsEditTableOpen(false)}
+                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#D8AA67] flex items-center justify-center transition-colors cursor-pointer"
+                aria-label="Close dialog"
               >
-                Edit Dining Table — {editingTable.table_number}
-              </h2>
+                ✕
+              </button>
+
+              <div className="flex items-center space-x-3.5">
+                <div className="w-10 h-10 rounded-2xl bg-[#D8AA67]/20 border border-[#D8AA67]/40 flex items-center justify-center shrink-0 text-[#D8AA67] shadow-inner">
+                  <Pencil className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="text-[10px] font-bold text-[#D8AA67] tracking-[0.2em] uppercase">
+                      Palace Floor Control
+                    </span>
+                    <span className="text-[#D8AA67] text-[8px]">&#9830;</span>
+                    <span className="text-[10px] text-[#FFF8EB]/80 font-medium">Edit Details</span>
+                  </div>
+                  <h2
+                    className="text-2xl font-bold text-[#FFF8EB] leading-tight"
+                    style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+                  >
+                    Edit Dining Table &mdash; {editingTable.table_number}
+                  </h2>
+                </div>
+              </div>
             </div>
-            <p className="text-xs text-[#81736D] mb-4">
-              Modify table number, assigned venue, seating capacity, and floor view
-            </p>
 
             {editTableError && (
-              <div className="p-2.5 mb-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs">
-                {editTableError}
+              <div className="m-4 p-2.5 bg-red-100 border border-red-300 text-red-900 rounded-xl text-xs flex items-center gap-2">
+                <AlertOctagon className="w-4 h-4 text-red-700 shrink-0" />
+                <span>{editTableError}</span>
               </div>
             )}
 
-            <form onSubmit={handleEditTableSubmit} className="space-y-3.5 text-xs">
+            <form onSubmit={handleEditTableSubmit} className="p-5 sm:p-6 space-y-3.5 text-xs">
+              {/* Category Quick Select */}
+              <div>
+                <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
+                  Venue / Table Category
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'restaurant', label: 'Restaurant', icon: '🍽️', defaultLoc: 'Palace Dining Hall' },
+                    { id: 'cafe', label: 'Café & Lounge', icon: '☕', defaultLoc: 'Courtyard Fountain' },
+                    { id: 'room', label: 'In-Room Table', icon: '🛏️', defaultLoc: 'In-Suite Chamber Dining' },
+                    { id: 'hall', label: 'Celebration Hall', icon: '🎉', defaultLoc: 'Grand Darbar Banquet' },
+                  ].map((cat) => {
+                    const isSel =
+                      (cat.id === 'room' && (editTableNumber.startsWith('ROOM') || editTableNumber.startsWith('R-'))) ||
+                      (cat.id === 'cafe' && (editTableNumber.startsWith('C-') || editTableOutletId.endsWith('0002'))) ||
+                      (cat.id === 'hall' && editTableNumber.startsWith('HALL')) ||
+                      (cat.id === 'restaurant' && !editTableNumber.startsWith('ROOM') && !editTableNumber.startsWith('C-') && !editTableNumber.startsWith('HALL'));
+
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => {
+                          if (cat.id === 'room') {
+                            if (!editTableNumber.startsWith('ROOM')) setEditTableNumber(`ROOM ${editTableNumber.replace(/^T-|^C-|^HALL-/, '')}`);
+                            setEditTableLocation(cat.defaultLoc);
+                          } else if (cat.id === 'cafe') {
+                            if (!editTableNumber.startsWith('C-')) setEditTableNumber(`C-${editTableNumber.replace(/^ROOM\s*|^T-|^HALL-/, '')}`);
+                            setEditTableLocation(cat.defaultLoc);
+                            const cafeOutlet = outlets.find((o) => o.type === 'cafe');
+                            if (cafeOutlet) setEditTableOutletId(cafeOutlet.id);
+                          } else if (cat.id === 'hall') {
+                            if (!editTableNumber.startsWith('HALL-')) setEditTableNumber(`HALL-${editTableNumber.replace(/^ROOM\s*|^T-|^C-/, '')}`);
+                            setEditTableLocation(cat.defaultLoc);
+                          } else {
+                            if (!editTableNumber.startsWith('T-')) setEditTableNumber(`T-${editTableNumber.replace(/^ROOM\s*|^C-|^HALL-/, '')}`);
+                            setEditTableLocation(cat.defaultLoc);
+                            const resOutlet = outlets.find((o) => o.type === 'restaurant');
+                            if (resOutlet) setEditTableOutletId(resOutlet.id);
+                          }
+                        }}
+                        className={`p-2 rounded-xl border text-[11px] font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                          isSel
+                            ? 'bg-[#4F0809] text-[#FFF8EB] border-[#D8AA67] shadow-xs'
+                            : 'bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#856B4D] border-[#E8DFCE]'
+                        }`}
+                      >
+                        <span>{cat.icon}</span>
+                        <span>{cat.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#302421] mb-1">
-                    Table Identifier *
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
+                    Table / Room Code *
                   </label>
                   <input
                     type="text"
                     required
                     value={editTableNumber}
                     onChange={(e) => setEditTableNumber(e.target.value)}
-                    placeholder="e.g. T-01 or C-02"
-                    className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none uppercase font-semibold"
+                    placeholder="e.g. T-01, C-02, ROOM 101"
+                    className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] bg-[#F5ECDC] focus:bg-white text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none uppercase font-bold text-[#4F0809]"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#302421] mb-1">
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                     Seating Capacity
                   </label>
                   <select
                     value={editTableCapacity}
                     onChange={(e) => setEditTableCapacity(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs bg-white focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
+                    className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
                   >
                     <option value="2">2 Guests</option>
                     <option value="4">4 Guests</option>
                     <option value="6">6 Guests</option>
-                    <option value="8">8 Guests (Large Banquet)</option>
+                    <option value="8">8 Guests (Banquet)</option>
                     <option value="12">12 Guests (Royal Diwan)</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-[#302421] mb-1">
+                <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                   Outlet Dining Venue
                 </label>
                 <select
                   value={editTableOutletId}
                   onChange={(e) => setEditTableOutletId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs bg-white focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
+                  className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
                 >
                   {outlets.map((o) => (
                     <option key={o.id} value={o.id}>
@@ -1117,26 +1313,26 @@ export default function TablesReservationsPage() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-[#302421] mb-1">
+                <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                   Floor Location / View
                 </label>
                 <input
                   type="text"
                   value={editTableLocation}
                   onChange={(e) => setEditTableLocation(e.target.value)}
-                  placeholder="e.g. Courtyard Fountain, Royal Balcony, Garden Alcove"
-                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
+                  placeholder="e.g. Courtyard Fountain, Royal Balcony, Suite Chamber"
+                  className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] bg-[#F5ECDC] focus:bg-white text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none text-[#4F0809]"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-[#302421] mb-1">
+                <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                   Current Status
                 </label>
                 <select
                   value={editTableStatus}
                   onChange={(e) => setEditTableStatus(e.target.value as Table['status'])}
-                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs bg-white focus:ring-1 focus:ring-[#4F0809] focus:outline-none font-medium"
+                  className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
                 >
                   <option value="available">● Available (Ready for Guests)</option>
                   <option value="occupied">● Occupied (Guests Seated)</option>
@@ -1145,19 +1341,20 @@ export default function TablesReservationsPage() {
                 </select>
               </div>
 
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#E8DCD2]">
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#E8DFCE]">
                 <button
                   type="button"
                   onClick={() => setIsEditTableOpen(false)}
-                  className="px-3.5 py-1.5 rounded-lg border border-[#E8DCD2] text-[#81736D] hover:bg-[#FBF6EF] text-xs font-semibold transition cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#856B4D] text-xs font-bold transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-[#4F0809] hover:bg-[#6B1518] text-white text-xs font-semibold shadow-xs transition cursor-pointer"
+                  className="px-5 py-2 rounded-xl bg-[#4F0809] hover:bg-[#651012] text-[#FFF8EB] text-xs font-bold shadow-md transition cursor-pointer border border-[#D8AA67]/40 flex items-center gap-1.5"
                 >
-                  Save Changes
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#D8AA67]" />
+                  <span>Save Changes</span>
                 </button>
               </div>
             </form>
@@ -1165,73 +1362,146 @@ export default function TablesReservationsPage() {
         </div>
       )}
 
-      {/* ── MODAL: Add New Dining Table ── */}
+      {/* ── MODAL: Add New Dining Table (Palace Heritage Theme) ── */}
       {isAddTableOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-[#E8DCD2] rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
-            <button
-              onClick={() => setIsAddTableOpen(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-[#FBF6EF] text-[#81736D] cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <h2
-              className="text-xl font-bold text-[#4F0809] mb-1"
-              style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
-            >
-              Add Palace Dining Table
-            </h2>
-            <p className="text-xs text-[#81736D] mb-4">
-              Register a new dining table to the floor plan and generate digital ordering QR token
-            </p>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-3xl max-w-md w-full overflow-hidden shadow-2xl relative text-[#4F0809] animate-fade-in">
+            {/* Royal Maroon Header */}
+            <div className="bg-gradient-to-r from-[#4F0809] via-[#651012] to-[#4F0809] text-[#FFF8EB] p-5 relative border-b border-[#D8AA67]/40">
+              <button
+                type="button"
+                onClick={() => setIsAddTableOpen(false)}
+                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#D8AA67] flex items-center justify-center transition-colors cursor-pointer"
+                aria-label="Close dialog"
+              >
+                ✕
+              </button>
+
+              <div className="flex items-center space-x-3.5">
+                <div className="w-10 h-10 rounded-2xl bg-[#D8AA67]/20 border border-[#D8AA67]/40 flex items-center justify-center shrink-0 text-[#D8AA67] shadow-inner">
+                  <Armchair className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="text-[10px] font-bold text-[#D8AA67] tracking-[0.2em] uppercase">
+                      Palace Dining Floor
+                    </span>
+                    <span className="text-[#D8AA67] text-[8px]">&#9830;</span>
+                    <span className="text-[10px] text-[#FFF8EB]/80 font-medium">Table &amp; Rooms</span>
+                  </div>
+                  <h2
+                    className="text-2xl font-bold text-[#FFF8EB] leading-tight"
+                    style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+                  >
+                    Add Dining Table / Room
+                  </h2>
+                </div>
+              </div>
+            </div>
 
             {addTableError && (
-              <div className="p-2.5 mb-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs">
-                {addTableError}
+              <div className="m-4 p-2.5 bg-red-100 border border-red-300 text-red-900 rounded-xl text-xs flex items-center gap-2">
+                <AlertOctagon className="w-4 h-4 text-red-700 shrink-0" />
+                <span>{addTableError}</span>
               </div>
             )}
 
-            <form onSubmit={handleAddTableSubmit} className="space-y-3.5 text-xs">
+            <form onSubmit={handleAddTableSubmit} className="p-5 sm:p-6 space-y-3.5 text-xs">
+              {/* Category Quick Select */}
+              <div>
+                <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
+                  Venue / Table Category *
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'restaurant', label: 'Restaurant', icon: '🍽️', prefix: 'T-', defaultLoc: 'Palace Dining Hall' },
+                    { id: 'cafe', label: 'Café & Lounge', icon: '☕', prefix: 'C-', defaultLoc: 'Courtyard Fountain' },
+                    { id: 'room', label: 'In-Room Table', icon: '🛏️', prefix: 'ROOM ', defaultLoc: 'In-Suite Chamber Dining' },
+                    { id: 'hall', label: 'Celebration Hall', icon: '🎉', prefix: 'HALL-', defaultLoc: 'Grand Darbar Banquet' },
+                  ].map((cat) => {
+                    const isSel =
+                      (cat.id === 'room' && (newTableNumber.startsWith('ROOM') || newTableNumber.startsWith('R-'))) ||
+                      (cat.id === 'cafe' && (newTableNumber.startsWith('C-') || newTableOutletId.endsWith('0002'))) ||
+                      (cat.id === 'hall' && newTableNumber.startsWith('HALL')) ||
+                      (cat.id === 'restaurant' && !newTableNumber.startsWith('ROOM') && !newTableNumber.startsWith('C-') && !newTableNumber.startsWith('HALL'));
+
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => {
+                          if (cat.id === 'room') {
+                            setNewTableNumber('ROOM ');
+                            setNewTableLocation(cat.defaultLoc);
+                          } else if (cat.id === 'cafe') {
+                            setNewTableNumber('C-');
+                            setNewTableLocation(cat.defaultLoc);
+                            const cafeOutlet = outlets.find((o) => o.type === 'cafe');
+                            if (cafeOutlet) setNewTableOutletId(cafeOutlet.id);
+                          } else if (cat.id === 'hall') {
+                            setNewTableNumber('HALL-');
+                            setNewTableLocation(cat.defaultLoc);
+                          } else {
+                            setNewTableNumber('T-');
+                            setNewTableLocation(cat.defaultLoc);
+                            const resOutlet = outlets.find((o) => o.type === 'restaurant');
+                            if (resOutlet) setNewTableOutletId(resOutlet.id);
+                          }
+                        }}
+                        className={`p-2 rounded-xl border text-[11px] font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                          isSel
+                            ? 'bg-[#4F0809] text-[#FFF8EB] border-[#D8AA67] shadow-xs'
+                            : 'bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#856B4D] border-[#E8DFCE]'
+                        }`}
+                      >
+                        <span>{cat.icon}</span>
+                        <span>{cat.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#302421] mb-1">
-                    Table Identifier *
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
+                    Table / Room Code *
                   </label>
                   <input
                     type="text"
                     required
                     value={newTableNumber}
                     onChange={(e) => setNewTableNumber(e.target.value)}
-                    placeholder="e.g. T-11 or C-05"
-                    className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none uppercase font-semibold"
+                    placeholder="e.g. T-11, C-05, ROOM 102"
+                    className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] bg-[#F5ECDC] focus:bg-white text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none uppercase font-bold text-[#4F0809]"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#302421] mb-1">
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                     Seating Capacity
                   </label>
                   <select
                     value={newTableCapacity}
                     onChange={(e) => setNewTableCapacity(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs bg-white focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
+                    className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
                   >
                     <option value="2">2 Guests</option>
-                    <option value="4">4 Guests</option>
+                    <option value="4">4 Guests (Standard)</option>
                     <option value="6">6 Guests</option>
-                    <option value="8">8 Guests (Large Banquet)</option>
+                    <option value="8">8 Guests (Banquet)</option>
                     <option value="12">12 Guests (Royal Diwan)</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-[#302421] mb-1">
-                  Outlet Venue *
+                <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
+                  Outlet Dining Venue *
                 </label>
                 <select
                   value={newTableOutletId}
                   onChange={(e) => setNewTableOutletId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs bg-white focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
+                  className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
                 >
                   {outlets.map((o) => (
                     <option key={o.id} value={o.id}>
@@ -1242,26 +1512,26 @@ export default function TablesReservationsPage() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-[#302421] mb-1">
+                <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                   Floor Location / View
                 </label>
                 <input
                   type="text"
                   value={newTableLocation}
                   onChange={(e) => setNewTableLocation(e.target.value)}
-                  placeholder="e.g. Courtyard Fountain, Royal Balcony, Garden Alcove"
-                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
+                  placeholder="e.g. Courtyard Fountain, Royal Balcony, Suite Chamber"
+                  className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] bg-[#F5ECDC] focus:bg-white text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none text-[#4F0809]"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-[#302421] mb-1">
-                  Initial Table Status
+                <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
+                  Initial Status
                 </label>
                 <select
                   value={newTableStatus}
                   onChange={(e) => setNewTableStatus(e.target.value as Table['status'])}
-                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs bg-white focus:ring-1 focus:ring-[#4F0809] focus:outline-none font-medium"
+                  className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
                 >
                   <option value="available">● Available (Ready for Guests)</option>
                   <option value="occupied">● Occupied (Seated)</option>
@@ -1270,19 +1540,20 @@ export default function TablesReservationsPage() {
                 </select>
               </div>
 
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#E8DCD2]">
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#E8DFCE]">
                 <button
                   type="button"
                   onClick={() => setIsAddTableOpen(false)}
-                  className="px-3.5 py-1.5 rounded-lg border border-[#E8DCD2] text-[#81736D] hover:bg-[#FBF6EF] text-xs font-semibold transition cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#856B4D] text-xs font-bold transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-[#4F0809] hover:bg-[#6B1518] text-white text-xs font-semibold shadow-xs transition cursor-pointer"
+                  className="px-5 py-2 rounded-xl bg-[#4F0809] hover:bg-[#651012] text-[#FFF8EB] text-xs font-bold shadow-md transition cursor-pointer border border-[#D8AA67]/40 flex items-center gap-1.5"
                 >
-                  Create Dining Table
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#D8AA67]" />
+                  <span>Save Table / Room</span>
                 </button>
               </div>
             </form>
@@ -1290,34 +1561,34 @@ export default function TablesReservationsPage() {
         </div>
       )}
 
-      {/* ── MODAL: Delete Table Confirmation (In-App, Highly Reliable) ── */}
+      {/* ── MODAL: Delete Table Confirmation (Palace Heritage Theme) ── */}
       {tableToDelete && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-[#E8DCD2] rounded-2xl max-w-sm w-full p-6 shadow-2xl relative text-center">
-            <div className="w-12 h-12 rounded-full bg-red-100 border border-red-200 mx-auto flex items-center justify-center text-red-600 mb-3">
+          <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-3xl max-w-sm w-full p-6 shadow-2xl relative text-center animate-fade-in text-[#4F0809]">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 border border-red-200 mx-auto flex items-center justify-center text-red-700 mb-3 shadow-inner">
               <Trash2 className="w-6 h-6" />
             </div>
 
             <h3
-              className="text-xl font-bold text-[#4F0809]"
+              className="text-2xl font-bold text-[#4F0809]"
               style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
             >
               Delete Table {tableToDelete.table_number}?
             </h3>
 
-            <p className="text-xs text-[#81736D] mt-2 mb-5 leading-relaxed">
+            <p className="text-xs text-[#856B4D] mt-2 mb-5 leading-relaxed">
               Are you sure you want to permanently delete dining table{' '}
-              <strong className="text-[#302421]">{tableToDelete.table_number}</strong>
+              <strong className="text-[#4F0809] font-bold">{tableToDelete.table_number}</strong>
               {tableToDelete.location ? ` (${tableToDelete.location})` : ''}? This will remove its
               digital QR token and floor space.
             </p>
 
-            <div className="flex items-center justify-center gap-3">
+            <div className="flex items-center justify-center gap-2.5">
               <button
                 type="button"
                 disabled={isDeleting}
                 onClick={() => setTableToDelete(null)}
-                className="flex-1 py-2 rounded-lg border border-[#E8DCD2] text-[#302421] hover:bg-[#FBF6EF] text-xs font-semibold transition cursor-pointer"
+                className="flex-1 py-2 rounded-xl bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#856B4D] text-xs font-bold transition cursor-pointer"
               >
                 Keep Table
               </button>
@@ -1325,7 +1596,7 @@ export default function TablesReservationsPage() {
                 type="button"
                 disabled={isDeleting}
                 onClick={confirmDeleteTable}
-                className="flex-1 py-2 rounded-lg bg-red-700 hover:bg-red-800 text-white text-xs font-semibold shadow-sm transition cursor-pointer"
+                className="flex-1 py-2 rounded-xl bg-red-700 hover:bg-red-800 text-[#FFF8EB] text-xs font-bold shadow-md transition cursor-pointer"
               >
                 {isDeleting ? 'Deleting...' : 'Yes, Delete Table'}
               </button>
@@ -1334,33 +1605,33 @@ export default function TablesReservationsPage() {
         </div>
       )}
 
-      {/* ── MODAL: Delete Reservation Confirmation ── */}
+      {/* ── MODAL: Delete Reservation Confirmation (Palace Heritage Theme) ── */}
       {reservationToDelete && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-[#E8DCD2] rounded-2xl max-w-sm w-full p-6 shadow-2xl relative text-center">
-            <div className="w-12 h-12 rounded-full bg-red-100 border border-red-200 mx-auto flex items-center justify-center text-red-600 mb-3">
+          <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-3xl max-w-sm w-full p-6 shadow-2xl relative text-center animate-fade-in text-[#4F0809]">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 border border-red-200 mx-auto flex items-center justify-center text-red-700 mb-3 shadow-inner">
               <Trash2 className="w-6 h-6" />
             </div>
 
             <h3
-              className="text-xl font-bold text-[#4F0809]"
+              className="text-2xl font-bold text-[#4F0809]"
               style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
             >
               Delete Table Booking?
             </h3>
 
-            <p className="text-xs text-[#81736D] mt-2 mb-5 leading-relaxed">
+            <p className="text-xs text-[#856B4D] mt-2 mb-5 leading-relaxed">
               Are you sure you want to delete the reservation for{' '}
-              <strong className="text-[#302421]">{reservationToDelete.guest_name}</strong> at Table{' '}
-              <strong className="text-[#302421]">{reservationToDelete.table_number}</strong>?
+              <strong className="text-[#4F0809] font-bold">{reservationToDelete.guest_name}</strong> at Table{' '}
+              <strong className="text-[#4F0809] font-bold">{reservationToDelete.table_number}</strong>?
             </p>
 
-            <div className="flex items-center justify-center gap-3">
+            <div className="flex items-center justify-center gap-2.5">
               <button
                 type="button"
                 disabled={isDeleting}
                 onClick={() => setReservationToDelete(null)}
-                className="flex-1 py-2 rounded-lg border border-[#E8DCD2] text-[#302421] hover:bg-[#FBF6EF] text-xs font-semibold transition cursor-pointer"
+                className="flex-1 py-2 rounded-xl bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#856B4D] text-xs font-bold transition cursor-pointer"
               >
                 Cancel
               </button>
@@ -1368,7 +1639,7 @@ export default function TablesReservationsPage() {
                 type="button"
                 disabled={isDeleting}
                 onClick={confirmDeleteReservation}
-                className="flex-1 py-2 rounded-lg bg-red-700 hover:bg-red-800 text-white text-xs font-semibold shadow-sm transition cursor-pointer"
+                className="flex-1 py-2 rounded-xl bg-red-700 hover:bg-red-800 text-[#FFF8EB] text-xs font-bold shadow-md transition cursor-pointer"
               >
                 {isDeleting ? 'Deleting...' : 'Yes, Delete Booking'}
               </button>
@@ -1377,35 +1648,53 @@ export default function TablesReservationsPage() {
         </div>
       )}
 
-      {/* ── MODAL: Create Table Reservation ── */}
+      {/* ── MODAL: Create Table Reservation (Palace Heritage Theme) ── */}
       {isNewResModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-[#E8DCD2] rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
-            <button
-              onClick={() => setIsNewResModalOpen(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-[#FBF6EF] text-[#81736D] cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <h2
-              className="text-xl font-bold text-[#4F0809] mb-1"
-              style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
-            >
-              Reserve Dining Table
-            </h2>
-            <p className="text-xs text-[#81736D] mb-4">
-              Book a table for palace guests, private parties or VIP walk-ins
-            </p>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-3xl max-w-md w-full overflow-hidden shadow-2xl relative text-[#4F0809] animate-fade-in">
+            {/* Royal Maroon Header */}
+            <div className="bg-gradient-to-r from-[#4F0809] via-[#651012] to-[#4F0809] text-[#FFF8EB] p-5 relative border-b border-[#D8AA67]/40">
+              <button
+                type="button"
+                onClick={() => setIsNewResModalOpen(false)}
+                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#D8AA67] flex items-center justify-center transition-colors cursor-pointer"
+                aria-label="Close dialog"
+              >
+                ✕
+              </button>
+
+              <div className="flex items-center space-x-3.5">
+                <div className="w-10 h-10 rounded-2xl bg-[#D8AA67]/20 border border-[#D8AA67]/40 flex items-center justify-center shrink-0 text-[#D8AA67] shadow-inner">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="text-[10px] font-bold text-[#D8AA67] tracking-[0.2em] uppercase">
+                      Palace Hospitality
+                    </span>
+                    <span className="text-[#D8AA67] text-[8px]">&#9830;</span>
+                    <span className="text-[10px] text-[#FFF8EB]/80 font-medium">Table Booking</span>
+                  </div>
+                  <h2
+                    className="text-2xl font-bold text-[#FFF8EB] leading-tight"
+                    style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+                  >
+                    Reserve Dining Table
+                  </h2>
+                </div>
+              </div>
+            </div>
 
             {formError && (
-              <div className="p-2.5 mb-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs">
-                {formError}
+              <div className="m-4 p-2.5 bg-red-100 border border-red-300 text-red-900 rounded-xl text-xs flex items-center gap-2">
+                <AlertOctagon className="w-4 h-4 text-red-700 shrink-0" />
+                <span>{formError}</span>
               </div>
             )}
 
-            <form onSubmit={handleCreateReservation} className="space-y-3 text-xs">
+            <form onSubmit={handleCreateReservation} className="p-5 sm:p-6 space-y-3.5 text-xs">
               <div>
-                <label className="block text-[11px] font-semibold text-[#302421] mb-1">
+                <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                   Guest Full Name *
                 </label>
                 <input
@@ -1414,12 +1703,12 @@ export default function TablesReservationsPage() {
                   value={formGuestName}
                   onChange={(e) => setFormGuestName(e.target.value)}
                   placeholder="e.g. Kunwar Vikramaditya"
-                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
+                  className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] bg-[#F5ECDC] focus:bg-white text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none text-[#4F0809]"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-[#302421] mb-1">
+                <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                   Contact Phone Number *
                 </label>
                 <input
@@ -1428,19 +1717,19 @@ export default function TablesReservationsPage() {
                   value={formPhone}
                   onChange={(e) => setFormPhone(e.target.value)}
                   placeholder="+91 98290 12345"
-                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
+                  className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] bg-[#F5ECDC] focus:bg-white text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none text-[#4F0809]"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#302421] mb-1">
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                     Outlet Dining Venue
                   </label>
                   <select
                     value={formOutletId}
                     onChange={(e) => setFormOutletId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs bg-white focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
+                    className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
                   >
                     {outlets.map((o) => (
                       <option key={o.id} value={o.id}>
@@ -1450,16 +1739,16 @@ export default function TablesReservationsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#302421] mb-1">
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                     Assigned Table
                   </label>
                   <select
                     value={formTableNumber}
                     onChange={(e) => setFormTableNumber(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs bg-white focus:ring-1 focus:ring-[#4F0809] focus:outline-none font-semibold"
+                    className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-bold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
                   >
                     {tables
-                      .filter((t) => !formOutletId || t.outlet_id === formOutletId)
+                      .filter((t) => !formOutletId || t.outlet_id === formOutletId || t.table_number.toLowerCase().startsWith('room'))
                       .map((t) => (
                         <option key={t.id} value={t.table_number}>
                           {t.table_number} ({t.location || 'Area'} - {t.capacity} seats)
@@ -1469,23 +1758,23 @@ export default function TablesReservationsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-2.5">
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#302421] mb-1">Date</label>
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">Date</label>
                   <input
                     type="date"
                     required
                     value={formDate}
                     onChange={(e) => setFormDate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
+                    className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] bg-[#F5ECDC] focus:bg-white text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none text-[#4F0809]"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#302421] mb-1">Time</label>
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">Time</label>
                   <select
                     value={formTime}
                     onChange={(e) => setFormTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs bg-white focus:ring-1 focus:ring-[#4F0809] focus:outline-none font-medium"
+                    className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
                   >
                     {timeOptions.map((t) => (
                       <option key={t} value={t}>
@@ -1495,11 +1784,11 @@ export default function TablesReservationsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-[#302421] mb-1">Guests</label>
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">Guests</label>
                   <select
                     value={formPartySize}
                     onChange={(e) => setFormPartySize(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs bg-white focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
+                    className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
                   >
                     <option value="2">2 Guests</option>
                     <option value="4">4 Guests</option>
@@ -1512,7 +1801,7 @@ export default function TablesReservationsPage() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-[#302421] mb-1">
+                <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                   Special Notes / Preferences
                 </label>
                 <textarea
@@ -1520,23 +1809,24 @@ export default function TablesReservationsPage() {
                   value={formNotes}
                   onChange={(e) => setFormNotes(e.target.value)}
                   placeholder="e.g. Royal welcome, window seat preference, anniversary celebration, dietary preferences..."
-                  className="w-full px-3 py-2 rounded-lg border border-[#E8DCD2] text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
+                  className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] bg-[#F5ECDC] focus:bg-white text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none text-[#4F0809]"
                 />
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-[#E8DCD2]">
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#E8DFCE]">
                 <button
                   type="button"
                   onClick={() => setIsNewResModalOpen(false)}
-                  className="px-3.5 py-1.5 rounded-lg border border-[#E8DCD2] text-[#81736D] hover:bg-[#FBF6EF] text-xs font-semibold transition cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#856B4D] text-xs font-bold transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-[#4F0809] hover:bg-[#6B1518] text-white text-xs font-semibold shadow-xs transition cursor-pointer"
+                  className="px-5 py-2 rounded-xl bg-[#4F0809] hover:bg-[#651012] text-[#FFF8EB] text-xs font-bold shadow-md transition cursor-pointer border border-[#D8AA67]/40 flex items-center gap-1.5"
                 >
-                  Confirm Table Booking
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#D8AA67]" />
+                  <span>Confirm Table Booking</span>
                 </button>
               </div>
             </form>
@@ -1544,103 +1834,111 @@ export default function TablesReservationsPage() {
         </div>
       )}
 
-      {/* ── MODAL: Digital QR Token Preview ── */}
+      {/* ── MODAL: Digital QR Token Preview (Palace Heritage Theme) ── */}
       {qrModalTable && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-[#E8DCD2] rounded-2xl max-w-sm w-full p-6 shadow-2xl relative text-center">
-            <button
-              onClick={() => setQrModalTable(null)}
-              className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-[#FBF6EF] text-[#81736D] cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <div className="w-12 h-12 rounded-full bg-[#FBF6EF] border border-[#E8DCD2] mx-auto flex items-center justify-center text-[#4F0809] mb-3">
-              <QrCode className="w-6 h-6" />
-            </div>
-
-            <h3
-              className="text-xl font-bold text-[#4F0809]"
-              style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
-            >
-              Table {qrModalTable.table_number} Digital Token
-            </h3>
-            <p className="text-xs text-[#81736D] mt-0.5 mb-3">
-              Scan with mobile to auto-reserve Table {qrModalTable.table_number} &amp; launch palace menu
-            </p>
-
-            {/* Venue Switcher for QR Target */}
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              {[
-                { id: 'restaurant', label: 'Royal Restaurant', code: 'qr=r' },
-                { id: 'cafe', label: 'Courtyard Café', code: 'qr=c' },
-              ].map((v) => (
-                <button
-                  key={v.id}
-                  type="button"
-                  onClick={() => setQrVenue(v.id as any)}
-                  className={`p-1.5 rounded-xl border text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                    qrVenue === v.id
-                      ? 'border-[#4F0809] bg-[#4F0809] text-white shadow-xs'
-                      : 'border-[#E8DCD2] bg-[#FBF6EF] text-[#4F0809] hover:bg-[#F6EAE0]'
-                  }`}
-                >
-                  <span>{v.label}</span>
-                  <span className={`text-[10px] font-mono ${qrVenue === v.id ? 'text-[#D8AA67]' : 'text-[#81736D]'}`}>
-                    ({v.code})
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            {/* QR Code Container with Real Generated Scannable QR */}
-            <div className="p-3 bg-[#FBF6EF] rounded-xl border border-[#E8DCD2] inline-block mx-auto mb-3">
-              <div className="w-44 h-44 bg-white border border-[#E8DCD2] rounded-lg p-2 flex flex-col items-center justify-center mx-auto shadow-inner">
-                {qrDataUrl ? (
-                  <img
-                    src={qrDataUrl}
-                    alt={`Scannable QR for Table ${qrModalTable.table_number}`}
-                    className="w-full h-full object-contain"
-                  />
-                ) : (
-                  <>
-                    <QrCode className="w-28 h-28 text-[#4F0809]" />
-                    <span className="text-[10px] font-mono font-bold text-[#4F0809] mt-1">
-                      Table {qrModalTable.table_number}
-                    </span>
-                  </>
-                )}
-              </div>
-              <div className="mt-1.5 text-[10px] font-bold text-emerald-800 flex items-center justify-center gap-1">
-                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Auto-Reserves on Scan
-              </div>
-            </div>
-
-            {/* URL Display & Copy */}
-            <div className="flex items-center gap-1.5 p-2 bg-[#FBF6EF] border border-[#E8DCD2] rounded-lg text-xs font-mono text-[#4F0809] mb-3">
-              <span className="truncate flex-1 text-left text-[11px] font-semibold">
-                /menu?qr={qrVenue === 'cafe' ? 'c' : 'r'}&amp;table={qrModalTable.table_number}
-              </span>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl relative text-center text-[#4F0809] animate-fade-in">
+            {/* Royal Maroon Header */}
+            <div className="bg-gradient-to-r from-[#4F0809] via-[#651012] to-[#4F0809] text-[#FFF8EB] p-4 relative border-b border-[#D8AA67]/40">
               <button
                 type="button"
-                onClick={() => copyQRLink(qrModalTable.table_number)}
-                className="px-2 py-1 rounded bg-white border border-[#E8DCD2] text-[#4F0809] hover:bg-[#F6EAE0] text-[10px] font-semibold flex items-center gap-1 cursor-pointer shrink-0"
+                onClick={() => setQrModalTable(null)}
+                className="absolute top-3.5 right-3.5 w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 text-[#D8AA67] flex items-center justify-center transition-colors cursor-pointer"
+                aria-label="Close dialog"
               >
-                {copiedLink ? <Check className="w-3 h-3 text-[#2E7D32]" /> : <Copy className="w-3 h-3" />}
-                <span>{copiedLink ? 'Copied' : 'Copy'}</span>
+                ✕
               </button>
+
+              <div className="w-10 h-10 rounded-2xl bg-[#D8AA67]/20 border border-[#D8AA67]/40 mx-auto flex items-center justify-center text-[#D8AA67] mb-1.5 shadow-inner">
+                <QrCode className="w-5 h-5" />
+              </div>
+
+              <h3
+                className="text-2xl font-bold text-[#FFF8EB] leading-tight"
+                style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+              >
+                Table {qrModalTable.table_number} Digital Token
+              </h3>
+              <p className="text-[11px] text-[#FFF8EB]/80 mt-0.5 font-medium">
+                Guests scan this token at the table to browse royal menu &amp; order direct
+              </p>
             </div>
 
-            <div className="flex items-center justify-center gap-2">
-              <a
-                href={`/menu?qr=${qrVenue === 'cafe' ? 'c' : 'r'}&table=${qrModalTable.table_number}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#4F0809] hover:bg-[#6B1518] text-white text-xs font-semibold shadow-xs transition"
-              >
-                <span>Open Menu &amp; Test Reserve</span>
-                <ExternalLink className="w-3 h-3 text-[#D8AA67]" />
-              </a>
+            <div className="p-5 space-y-3">
+              {/* Venue Switcher for QR Target */}
+              <div className="grid grid-cols-3 gap-1.5">
+                {[
+                  { id: 'restaurant', label: 'Restaurant', code: 'qr=r', icon: '🍽️' },
+                  { id: 'cafe', label: 'Café', code: 'qr=c', icon: '☕' },
+                  { id: 'room', label: 'In-Room', code: 'qr=room', icon: '🛏️' },
+                ].map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => setQrVenue(v.id as any)}
+                    className={`p-2 rounded-xl border text-[11px] font-bold transition cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
+                      qrVenue === v.id
+                        ? 'border-[#D8AA67] bg-[#4F0809] text-[#FFF8EB] shadow-xs'
+                        : 'border-[#E8DFCE] bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#856B4D]'
+                    }`}
+                  >
+                    <span>{v.icon} {v.label}</span>
+                    <span className={`text-[9px] font-mono ${qrVenue === v.id ? 'text-[#D8AA67]' : 'text-[#856B4D]'}`}>
+                      ({v.code})
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* QR Code Container with Real Generated Scannable QR */}
+              <div className="p-3 bg-[#FAF6EF] rounded-2xl border border-[#E8DFCE] inline-block mx-auto shadow-inner">
+                <div className="w-48 h-48 bg-white border border-[#E8DFCE] rounded-xl p-2.5 flex flex-col items-center justify-center mx-auto shadow-xs">
+                  {qrDataUrl ? (
+                    <img
+                      src={qrDataUrl}
+                      alt={`Scannable QR for Table ${qrModalTable.table_number}`}
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <>
+                      <QrCode className="w-28 h-28 text-[#4F0809]" />
+                      <span className="text-[10px] font-mono font-bold text-[#4F0809] mt-1">
+                        Table {qrModalTable.table_number}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div className="mt-2 text-[10px] font-bold text-emerald-800 flex items-center justify-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Auto-Reserves Table on Scan
+                </div>
+              </div>
+
+              {/* URL Display & Copy */}
+              <div className="flex items-center gap-1.5 p-2.5 bg-[#FAF6EF] border border-[#E8DFCE] rounded-xl text-xs font-mono text-[#4F0809]">
+                <span className="truncate flex-1 text-left text-[11px] font-semibold">
+                  /menu?qr={qrVenue === 'room' ? 'room' : qrVenue === 'cafe' ? 'c' : 'r'}&amp;table={qrModalTable.table_number}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => copyQRLink(qrModalTable.table_number)}
+                  className="px-2.5 py-1 rounded-lg bg-[#4F0809] text-[#FFF8EB] hover:bg-[#651012] text-[10px] font-bold flex items-center gap-1 cursor-pointer shrink-0 border border-[#D8AA67]/40 shadow-xs"
+                >
+                  {copiedLink ? <Check className="w-3 h-3 text-[#D8AA67]" /> : <Copy className="w-3 h-3 text-[#D8AA67]" />}
+                  <span>{copiedLink ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+
+              <div className="flex items-center justify-center gap-2 pt-1">
+                <a
+                  href={`/menu?qr=${qrVenue === 'room' ? 'room' : qrVenue === 'cafe' ? 'c' : 'r'}&table=${encodeURIComponent(qrModalTable.table_number)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#4F0809] hover:bg-[#651012] text-[#FFF8EB] text-xs font-bold shadow-md transition border border-[#D8AA67]/40"
+                >
+                  <span>Open Dining Token</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-[#D8AA67]" />
+                </a>
+              </div>
             </div>
           </div>
         </div>
