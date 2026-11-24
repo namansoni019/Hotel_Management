@@ -25,24 +25,16 @@ import {
 import { collection, onSnapshot, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { dataRepository } from '@/lib/data/repository';
+import { getFirestoreTimestampMs, formatCreatedAtParts } from '@/lib/utils/dates';
 import type { Order, Reservation, TableReservation, Room, InventoryItem } from '@/lib/types';
 
-function getOrderTimestamp(created_at: any): number {
-  if (!created_at) return 0;
-  if (typeof created_at === 'object' && typeof created_at.seconds === 'number') {
-    return created_at.seconds * 1000;
-  }
-  if (typeof created_at?.toDate === 'function') {
-    return created_at.toDate().getTime();
-  }
-  const t = new Date(created_at).getTime();
-  return isNaN(t) ? 0 : t;
+function getOrderTimestamp(created_at: any, fallbackId?: string): number {
+  return getFirestoreTimestampMs(created_at, fallbackId);
 }
 
-function formatOrderTime(created_at: any): string {
-  const t = getOrderTimestamp(created_at);
-  if (!t) return 'Recently';
-  return new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+function formatOrderTime(created_at: any, fallbackId?: string): string {
+  const { timeLabel } = formatCreatedAtParts(created_at, fallbackId);
+  return timeLabel;
 }
 
 function getOrderSource(ord: any): { label: string; dotClass: string } {
@@ -105,7 +97,7 @@ export default function AdminDashboardPage() {
   const [activeTab, setActiveTab] = useState<'orders' | 'bookings' | 'reservations'>('orders');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 4;
+  const pageSize = 6;
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedBooking, setSelectedBooking] = useState<Reservation | null>(null);
   const [selectedTableRes, setSelectedTableRes] = useState<TableReservation | null>(null);
@@ -212,7 +204,7 @@ export default function AdminDashboardPage() {
       (snap) => {
         if (!snap.empty) {
           const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Order[];
-          list.sort((a, b) => getOrderTimestamp(b.created_at) - getOrderTimestamp(a.created_at));
+          list.sort((a, b) => getOrderTimestamp(b.created_at, b.id) - getOrderTimestamp(a.created_at, a.id));
           setOrders(list);
         } else {
           setOrders(dataRepository.getOrders());
@@ -225,14 +217,18 @@ export default function AdminDashboardPage() {
       }
     );
 
-    // 2. Real-time reservations listener
+    // 2. Real-time reservations listener (sorted newest first using Firestore created_at Timestamp)
     const unsubReservations = onSnapshot(
       collection(db, 'reservations'),
       (snap) => {
         if (!snap.empty) {
           const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Reservation[];
-          list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+          list.sort(
+            (a, b) => getFirestoreTimestampMs(b.created_at, b.id) - getFirestoreTimestampMs(a.created_at, a.id)
+          );
           setBookings(list);
+        } else {
+          setBookings(dataRepository.getReservations());
         }
       },
       (err) => console.warn('Real-time reservations listener:', err)
@@ -333,7 +329,9 @@ export default function AdminDashboardPage() {
 
       if (resSnap && !resSnap.empty) {
         const list = resSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as Reservation[];
-        list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+        list.sort(
+          (a, b) => getFirestoreTimestampMs(b.created_at, b.id) - getFirestoreTimestampMs(a.created_at, a.id)
+        );
         setBookings(list);
       }
       if (tblSnap && !tblSnap.empty) {
@@ -456,6 +454,11 @@ export default function AdminDashboardPage() {
     return filteredOrders.slice(start, start + pageSize);
   }, [filteredOrders, currentPage]);
 
+  const paginatedBookings = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredBookings.slice(start, start + pageSize);
+  }, [filteredBookings, currentPage]);
+
   const totalPages = Math.ceil(
     (activeTab === 'orders'
       ? filteredOrders.length
@@ -473,9 +476,10 @@ export default function AdminDashboardPage() {
         csvContent += `${o.order_number},${o.channel},Rajmahal Dining,${o.table?.table_number || o.delivery_address || 'Counter'},${o.order_lines?.length || 1},${o.status},${o.total_minor / 100}\n`;
       });
     } else if (activeTab === 'bookings') {
-      csvContent += 'Booking ID,Guest,Room,Check In,Check Out,Status,Amount\n';
+      csvContent += 'Booking ID,Guest,Room,Booked At,Check In,Check Out,Status,Amount\n';
       filteredBookings.forEach((b) => {
-        csvContent += `${b.reference_code},${b.guest?.name || 'Guest'},${b.room?.room_number || 'Suite'},${b.check_in},${b.check_out},${b.status},${b.rate_snapshot_minor / 100}\n`;
+        const bookedStr = formatCreatedAtParts(b.created_at, b.id).fullLabel;
+        csvContent += `${b.reference_code},"${b.guest?.name || 'Guest'}",${b.room?.room_number || 'Suite'},"${bookedStr}",${b.check_in},${b.check_out},${b.status},${b.rate_snapshot_minor / 100}\n`;
       });
     } else {
       csvContent += 'Reservation ID,Guest,Outlet,Table,Date & Time,Party Size,Status\n';
@@ -1193,7 +1197,7 @@ export default function AdminDashboardPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-stone-500 font-medium">
-                          {formatOrderTime(ord.created_at)}
+                          {formatOrderTime(ord.created_at, ord.id)}
                         </td>
                         <td className="px-4 py-3 font-bold text-[#302421]">
                           ₹ {totalAmount.toLocaleString('en-IN')}
@@ -1222,6 +1226,7 @@ export default function AdminDashboardPage() {
                   <th className="px-4 py-2.5">BOOKING ID</th>
                   <th className="px-4 py-2.5">GUEST</th>
                   <th className="px-4 py-2.5">ROOM</th>
+                  <th className="px-4 py-2.5">BOOKED AT</th>
                   <th className="px-4 py-2.5">CHECK-IN</th>
                   <th className="px-4 py-2.5">CHECK-OUT</th>
                   <th className="px-4 py-2.5">GUESTS</th>
@@ -1231,52 +1236,71 @@ export default function AdminDashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#F5EFE6]">
-                {filteredBookings.length === 0 ? (
+                {paginatedBookings.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-8 text-center text-xs text-stone-500">
+                    <td colSpan={10} className="py-8 text-center text-xs text-stone-500">
                       No room bookings found. Create a booking from Room Bookings to begin.
                     </td>
                   </tr>
                 ) : (
-                  filteredBookings.slice(0, 6).map((b) => (
-                    <tr key={b.id} className="hover:bg-[#FAF6EF]/60 transition-colors">
-                      <td className="px-4 py-3 font-bold text-[#302421]">#{b.reference_code}</td>
-                      <td className="px-4 py-3 font-semibold text-[#302421]">{b.guest?.name || 'Guest'}</td>
-                      <td className="px-4 py-3">
-                        <span className="bg-[#FAF6EF] border border-[#E8DCD2] px-2 py-0.5 rounded text-[11px] font-bold text-stone-700">
-                          {b.room?.room_number || 'Suite'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-stone-600">{b.check_in}</td>
-                      <td className="px-4 py-3 text-stone-600">{b.check_out}</td>
-                      <td className="px-4 py-3 text-stone-600">{b.party_size} Guests</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold capitalize ${
-                            b.status === 'checked_in'
-                              ? 'bg-[#EBF7EE] text-[#2E7D32]'
-                              : b.status === 'confirmed'
-                              ? 'bg-[#FDF4E5] text-[#B7791F]'
-                              : 'bg-stone-100 text-stone-700'
-                          }`}
-                        >
-                          {b.status.replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-[#2E7D32] font-semibold">Paid</span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedBooking(b)}
-                          className="bg-[#FAF6EF] hover:bg-[#F5EFE6] border border-[#E8DCD2] text-[#302421] text-[11px] font-semibold px-2.5 py-1 rounded transition-colors cursor-pointer"
-                        >
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                  paginatedBookings.map((b) => {
+                    const bookedAt = formatCreatedAtParts(b.created_at, b.id);
+                    const matchedRoom = b.room?.room_number
+                      ? `Room ${b.room.room_number}`
+                      : b.room_id
+                      ? (() => {
+                          const found = rooms.find((r) => r.id === b.room_id);
+                          return found?.room_number ? `Room ${found.room_number}` : 'Suite';
+                        })()
+                      : 'Suite';
+
+                    return (
+                      <tr key={b.id} className="hover:bg-[#FAF6EF]/60 transition-colors">
+                        <td className="px-4 py-3 font-bold text-[#302421]">#{b.reference_code}</td>
+                        <td className="px-4 py-3 font-semibold text-[#302421]">{b.guest?.name || 'Guest'}</td>
+                        <td className="px-4 py-3">
+                          <span className="bg-[#FAF6EF] border border-[#E8DCD2] px-2 py-0.5 rounded text-[11px] font-bold text-stone-700 whitespace-nowrap">
+                            {matchedRoom}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="font-semibold text-[#4F0809] flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-[#D8AA67]" />
+                            <span>{bookedAt.timeLabel}</span>
+                          </div>
+                          <div className="text-[10px] text-stone-500 mt-0.5">{bookedAt.dateLabel}</div>
+                        </td>
+                        <td className="px-4 py-3 text-stone-600 whitespace-nowrap">{b.check_in}</td>
+                        <td className="px-4 py-3 text-stone-600 whitespace-nowrap">{b.check_out}</td>
+                        <td className="px-4 py-3 text-stone-600 whitespace-nowrap">{b.party_size} Guests</td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold capitalize whitespace-nowrap ${
+                              b.status === 'checked_in'
+                                ? 'bg-[#EBF7EE] text-[#2E7D32]'
+                                : b.status === 'confirmed'
+                                ? 'bg-[#FDF4E5] text-[#B7791F]'
+                                : 'bg-stone-100 text-stone-700'
+                            }`}
+                          >
+                            {b.status.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-[#2E7D32] font-semibold">Paid</span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedBooking(b)}
+                            className="bg-[#FAF6EF] hover:bg-[#F5EFE6] border border-[#E8DCD2] text-[#302421] text-[11px] font-semibold px-2.5 py-1 rounded transition-colors cursor-pointer"
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -1353,7 +1377,7 @@ export default function AdminDashboardPage() {
             {activeTab === 'orders'
               ? paginatedOrders.length
               : activeTab === 'bookings'
-              ? Math.min(6, filteredBookings.length)
+              ? paginatedBookings.length
               : filteredTableRes.length}{' '}
             of{' '}
             {activeTab === 'orders'
@@ -1500,11 +1524,29 @@ export default function AdminDashboardPage() {
                 </div>
                 <div>
                   <span className="text-stone-500 block">Assigned Chamber</span>
-                  <span className="font-bold text-stone-900">{selectedBooking.room?.room_number || 'Room 101'}</span>
+                  <span className="font-bold text-stone-900">
+                    {selectedBooking.room?.room_number
+                      ? `Room ${selectedBooking.room.room_number}`
+                      : selectedBooking.room_id
+                      ? `Room ${rooms.find((r) => r.id === selectedBooking.room_id)?.room_number || 'Suite'}`
+                      : 'Suite'}
+                  </span>
                 </div>
                 <div>
                   <span className="text-stone-500 block">Stay Dates</span>
                   <span className="font-bold text-stone-900">{selectedBooking.check_in} to {selectedBooking.check_out}</span>
+                </div>
+                <div>
+                  <span className="text-stone-500 block">Booked At</span>
+                  <span className="font-bold text-[#4F0809]">
+                    {formatCreatedAtParts(selectedBooking.created_at, selectedBooking.id).fullLabel}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-stone-500 block">Check-In / Out Time</span>
+                  <span className="font-bold text-stone-900">
+                    {selectedBooking.check_in_time || '12:00 PM'} / {selectedBooking.check_out_time || '11:00 AM'}
+                  </span>
                 </div>
                 <div>
                   <span className="text-stone-500 block">Booking Status</span>

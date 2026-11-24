@@ -35,6 +35,7 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { reservationsService } from '@/lib/services/reservations-service';
 import { dataRepository } from '@/lib/data/repository';
+import { getFirestoreTimestampMs, formatCreatedAtParts } from '@/lib/utils/dates';
 import PalaceDatePicker from '@/components/ui/palace-date-picker';
 import PalaceTimePicker from '@/components/ui/palace-time-picker';
 import type { Reservation, RoomType, Room, GuestAadhaarDetail } from '@/lib/types';
@@ -190,7 +191,9 @@ export default function RoomBookingsPage() {
       (snap) => {
         if (!snap.empty) {
           const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Reservation[];
-          list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+          list.sort(
+            (a, b) => getFirestoreTimestampMs(b.created_at, b.id) - getFirestoreTimestampMs(a.created_at, a.id)
+          );
           setReservations(list);
         } else {
           setReservations(dataRepository.getReservations());
@@ -744,7 +747,10 @@ export default function RoomBookingsPage() {
                   return (
                     <tr key={res.id} className="hover:bg-[#FBF6EF]/50 transition-colors">
                       <td className="py-2.5 px-3 font-semibold text-[#4F0809]">
-                        {res.reference_code}
+                        <div>{res.reference_code}</div>
+                        <div className="text-[10px] font-medium text-[#81736D] mt-0.5">
+                          Booked: {formatCreatedAtParts(res.created_at, res.id).fullLabel}
+                        </div>
                       </td>
                       <td className="py-2.5 px-3">
                         <div className="font-medium text-[#302421]">{res.guest?.name || 'Walk-in Guest'}</div>
@@ -921,6 +927,12 @@ export default function RoomBookingsPage() {
               </div>
 
               <div className="p-3.5 bg-[#F5ECDC] border border-[#E8DFCE] rounded-xl space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-[#856B4D] font-semibold">Booked On:</span>
+                  <span className="font-bold text-[#4F0809]">
+                    {formatCreatedAtParts(selectedBooking.created_at, selectedBooking.id).fullLabel}
+                  </span>
+                </div>
                 <div className="flex justify-between">
                   <span className="text-[#856B4D] font-semibold">Check-In:</span>
                   <span className="font-bold text-[#4F0809]">

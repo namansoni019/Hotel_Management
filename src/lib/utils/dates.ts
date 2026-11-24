@@ -118,3 +118,66 @@ export function isToday(
 export function todayString(timezone: string = DEFAULT_TIMEZONE): string {
   return formatDate(new Date(), 'yyyy-MM-dd', timezone);
 }
+
+/**
+ * Safely convert a Firestore Timestamp, Date, ISO string, or fallback epoch ID into epoch ms.
+ */
+export function getFirestoreTimestampMs(createdAt: unknown, fallbackId?: string): number {
+  if (createdAt) {
+    if (typeof createdAt === 'object') {
+      const ts = createdAt as { seconds?: number; nanoseconds?: number; toDate?: () => Date };
+      if (typeof ts.toDate === 'function') {
+        const d = ts.toDate();
+        if (!isNaN(d.getTime())) return d.getTime();
+      }
+      if (typeof ts.seconds === 'number') {
+        return ts.seconds * 1000 + Math.floor((ts.nanoseconds || 0) / 1e6);
+      }
+    }
+    if (typeof createdAt === 'number' && !isNaN(createdAt)) {
+      return createdAt;
+    }
+    if (typeof createdAt === 'string') {
+      const parsed = new Date(createdAt).getTime();
+      if (!isNaN(parsed)) return parsed;
+    }
+  }
+  if (fallbackId) {
+    const match = fallbackId.match(/(\d{12,15})/);
+    if (match) {
+      const num = Number(match[1]);
+      if (!isNaN(num)) return num;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Format a Firestore created_at Timestamp or date into readable time + date labels.
+ */
+export function formatCreatedAtParts(
+  createdAt: unknown,
+  fallbackId?: string
+): { timeLabel: string; dateLabel: string; fullLabel: string; ms: number } {
+  const ms = getFirestoreTimestampMs(createdAt, fallbackId);
+  if (!ms) {
+    return { timeLabel: 'Just now', dateLabel: 'Live', fullLabel: 'Just now', ms: 0 };
+  }
+  const d = new Date(ms);
+  const timeLabel = d.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+  const dateLabel = d.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+  return {
+    timeLabel,
+    dateLabel,
+    fullLabel: `${dateLabel}, ${timeLabel}`,
+    ms,
+  };
+}
