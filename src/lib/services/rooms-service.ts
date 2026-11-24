@@ -3,6 +3,7 @@ import {
   doc,
   getDocs,
   getDoc,
+  setDoc,
   addDoc,
   updateDoc,
   deleteDoc,
@@ -16,20 +17,32 @@ import type { Room, RoomType, HousekeepingState, AvailabilityResult } from '@/li
 
 export const roomsService = {
   async getRoomTypes(): Promise<RoomType[]> {
+    const defaultTypes = dataRepository.getRoomTypes();
     try {
       const colRef = collection(db, 'room_types');
       const q = query(colRef, where('is_active', '==', true));
       const snap = await getDocs(q);
       if (!snap.empty) {
-        return snap.docs.map((d) => ({
+        const live = snap.docs.map((d) => ({
           id: d.id,
           ...d.data(),
         })) as RoomType[];
+        // Only allow Deluxe Room and Non-Deluxe Room
+        const filtered = live.filter(
+          (rt) => rt.name === 'Deluxe Room' || rt.name === 'Non-Deluxe Room'
+        );
+        if (filtered.length >= 2) {
+          return filtered;
+        }
+      }
+      // Ensure Firestore has the 2 standard types
+      for (const rt of defaultTypes) {
+        setDoc(doc(db, 'room_types', rt.id), rt).catch(() => {});
       }
     } catch (err) {
       console.warn('Firestore getRoomTypes fallback:', err);
     }
-    return dataRepository.getRoomTypes();
+    return defaultTypes;
   },
 
   async getRoomTypeById(id: string): Promise<RoomType | null> {

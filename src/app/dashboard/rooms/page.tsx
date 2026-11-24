@@ -21,6 +21,21 @@ import { roomsService } from '@/lib/services/rooms-service';
 import { dataRepository } from '@/lib/data/repository';
 import type { Room, HousekeepingState, RoomType } from '@/lib/types';
 
+const CHAMBER_CATEGORIES = [
+  {
+    id: 'd0000000-0000-0000-0000-000000000001',
+    name: 'Deluxe Room',
+    badge: 'ROYAL LUXURY',
+    rate: '₹6,500 / night',
+  },
+  {
+    id: 'd0000000-0000-0000-0000-000000000002',
+    name: 'Non-Deluxe Room',
+    badge: 'HERITAGE STANDARD',
+    rate: '₹4,500 / night',
+  },
+] as const;
+
 export default function RoomsHousekeepingPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
@@ -169,7 +184,13 @@ export default function RoomsHousekeepingPage() {
     setActionError(null);
 
     const cleanNum = newRoomNumber.trim().replace(/^(room|chamber)\s*/i, '');
-    const matchedType = roomTypes.find((rt) => rt.id === newRoomTypeId) || roomTypes[0];
+    const isNonDeluxe = newRoomTypeId === 'd0000000-0000-0000-0000-000000000002';
+    const targetTypeId = isNonDeluxe ? 'd0000000-0000-0000-0000-000000000002' : 'd0000000-0000-0000-0000-000000000001';
+    const matchedType =
+      roomTypes.find((rt) => rt.id === targetTypeId) ||
+      (isNonDeluxe
+        ? roomTypes.find((rt) => rt.name.toLowerCase().includes('non')) || roomTypes[1]
+        : roomTypes.find((rt) => !rt.name.toLowerCase().includes('non')) || roomTypes[0]);
 
     try {
       const res = await fetch('/api/rooms', {
@@ -177,7 +198,7 @@ export default function RoomsHousekeepingPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           room_number: cleanNum,
-          room_type_id: matchedType?.id || 'd0000000-0000-0000-0000-000000000001',
+          room_type_id: targetTypeId,
           housekeeping_state: newRoomState,
           notes: newRoomNotes || null,
         }),
@@ -190,7 +211,7 @@ export default function RoomsHousekeepingPage() {
       } else {
         savedRoom = dataRepository.addRoom({
           room_number: cleanNum,
-          room_type_id: matchedType?.id || 'd0000000-0000-0000-0000-000000000001',
+          room_type_id: targetTypeId,
           housekeeping_state: newRoomState,
           notes: newRoomNotes || null,
         });
@@ -530,31 +551,33 @@ export default function RoomsHousekeepingPage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  {roomTypes.slice(0, 2).map((rt) => {
-                    const isDeluxe = !rt.name.toLowerCase().includes('non');
-                    const isSelected = newRoomTypeId === rt.id;
+                  {CHAMBER_CATEGORIES.map((cat) => {
+                    const isSelected =
+                      newRoomTypeId === cat.id ||
+                      (!newRoomTypeId && cat.id.endsWith('0001')) ||
+                      (newRoomTypeId && !newRoomTypeId.endsWith('0002') && cat.id.endsWith('0001'));
                     return (
                       <button
-                        key={rt.id}
+                        key={cat.id}
                         type="button"
-                        onClick={() => setNewRoomTypeId(rt.id)}
-                        className={`p-3 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                        onClick={() => setNewRoomTypeId(cat.id)}
+                        className={`p-3.5 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
                           isSelected
-                            ? 'border-[#4F0809] bg-[#4F0809] text-[#FFF8EB] shadow-md'
+                            ? 'border-[#4F0809] bg-[#4F0809] text-[#FFF8EB] shadow-md ring-1 ring-[#D8AA67]'
                             : 'border-[#E8DFCE] bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#4F0809]'
                         }`}
                       >
                         <div className="flex items-center justify-between mb-1">
                           <span className={`text-[10px] font-bold uppercase tracking-wider ${isSelected ? 'text-[#D8AA67]' : 'text-[#856B4D]'}`}>
-                            {isDeluxe ? 'Royal Luxury' : 'Heritage Standard'}
+                            {cat.badge}
                           </span>
                           {isSelected && <CheckCircle2 className="w-4 h-4 text-[#D8AA67]" />}
                         </div>
                         <div className="font-bold text-sm sm:text-base leading-snug">
-                          {isDeluxe ? 'Deluxe Room' : 'Non-Deluxe Room'}
+                          {cat.name}
                         </div>
                         <div className={`text-[11px] font-medium mt-1 ${isSelected ? 'text-[#FFF8EB]/80' : 'text-[#856B4D]'}`}>
-                          {isDeluxe ? '₹6,500 / night • King Bed' : '₹4,500 / night • Double Bed'}
+                          {cat.rate}
                         </div>
                       </button>
                     );
