@@ -23,12 +23,96 @@ import {
   User,
   MapPin,
   Check,
+  Banknote,
+  CreditCard,
+  QrCode,
+  Smartphone,
+  Sparkles,
 } from 'lucide-react';
 import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { ordersService } from '@/lib/services/orders-service';
 import { dataRepository } from '@/lib/data/repository';
 import type { Order, Outlet } from '@/lib/types';
+
+function getOrderTimestamp(created_at: any): number {
+  if (!created_at) return 0;
+  if (typeof created_at === 'object' && typeof created_at.seconds === 'number') {
+    return created_at.seconds * 1000;
+  }
+  if (typeof created_at?.toDate === 'function') {
+    return created_at.toDate().getTime();
+  }
+  const t = new Date(created_at).getTime();
+  return isNaN(t) ? 0 : t;
+}
+
+function formatOrderTime(created_at: any): string {
+  const t = getOrderTimestamp(created_at);
+  if (!t) return 'Recently';
+  return new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function getOrderLocation(order: Order): string {
+  // 1. Explicit room_number
+  if (order.room_number) {
+    const val = String(order.room_number).trim();
+    return val.toLowerCase().startsWith('room') || val.toLowerCase().startsWith('suite')
+      ? val
+      : `Room ${val}`;
+  }
+
+  // 2. Table number
+  if (order.table_number) {
+    const val = String(order.table_number).trim();
+    return val.toLowerCase().startsWith('table') ? val : `Table ${val}`;
+  }
+  if (order.table?.table_number) {
+    const val = String(order.table.table_number).trim();
+    return val.toLowerCase().startsWith('table') ? val : `Table ${val}`;
+  }
+
+  // 3. Table ID
+  if (order.table_id && order.table_id.trim()) {
+    const val = order.table_id.trim();
+    const lower = val.toLowerCase();
+    if (lower.startsWith('room') || lower.startsWith('suite')) {
+      return val;
+    }
+    if (lower.startsWith('table') || lower.startsWith('t-')) {
+      return val;
+    }
+    return `Table ${val}`;
+  }
+
+  // 4. Delivery notes
+  if (order.delivery_notes) {
+    const match = order.delivery_notes.match(/(?:Table\/Room|Table|Room|Suite)\s*:\s*([^\n,]+)/i);
+    if (match && match[1]) {
+      const extracted = match[1].trim();
+      if (extracted.toLowerCase().startsWith('room') || extracted.toLowerCase().startsWith('table')) {
+        return extracted;
+      }
+      return `Table ${extracted}`;
+    }
+  }
+
+  // 5. Fulfillment mode
+  const mode = order.order_type || order.fulfilment_mode;
+  if (mode === 'delivery') return 'Doorstep Delivery';
+  if (mode === 'room_service') return 'Room Service';
+  if (mode === 'dine_in') return 'Table T-01';
+  if (mode === 'pickup') return 'Counter Pickup';
+
+  return 'Table T-01';
+}
+
+function getPaymentMode(order: Order): 'upi' | 'cash' | 'card' {
+  const mode = String(order.payment_mode || order.payment_method || '').toLowerCase();
+  if (mode.includes('cash')) return 'cash';
+  if (mode.includes('card')) return 'card';
+  return 'upi';
+}
 
 function OrdersContent() {
   const searchParams = useSearchParams();
@@ -41,6 +125,7 @@ function OrdersContent() {
   const [searchQuery, setSearchQuery] = useState(urlSearch);
   const [outletFilter, setOutletFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'upi' | 'cash' | 'card'>('all');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   useEffect(() => {
@@ -57,7 +142,7 @@ function OrdersContent() {
       (snap) => {
         if (!snap.empty) {
           const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Order[];
-          list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+          list.sort((a, b) => getOrderTimestamp(b.created_at) - getOrderTimestamp(a.created_at));
           setOrders(list);
         } else {
           setOrders(dataRepository.getOrders());
@@ -107,6 +192,20 @@ function OrdersContent() {
     }
   };
 
+  const handleUpdatePaymentMode = async (id: string, mode: 'upi' | 'cash' | 'card') => {
+    try {
+      await ordersService.updateOrderPaymentMode(id, mode);
+    } catch {
+      dataRepository.updateOrderPaymentMode(id, mode);
+    }
+    setOrders((prev) =>
+      prev.map((ord) => (ord.id === id ? { ...ord, payment_mode: mode, payment_method: mode } : ord))
+    );
+    if (selectedOrder && selectedOrder.id === id) {
+      setSelectedOrder({ ...selectedOrder, payment_mode: mode, payment_method: mode });
+    }
+  };
+
   const loadData = () => {
     // Real-time listener handles sync
   };
@@ -128,7 +227,10 @@ function OrdersContent() {
       // 3. Status filter
       if (statusFilter !== 'all' && o.status !== statusFilter) return false;
 
-      // 4. Search query
+      // 4. Payment mode filter
+      if (paymentFilter !== 'all' && getPaymentMode(o) !== paymentFilter) return false;
+
+      // 5. Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const num = o.order_number.toLowerCase();
@@ -150,7 +252,7 @@ function OrdersContent() {
 
       return true;
     });
-  }, [orders, activeTab, outletFilter, statusFilter, searchQuery]);
+  }, [orders, activeTab, outletFilter, statusFilter, paymentFilter, searchQuery]);
 
   // Metrics
   const totalCount = orders.length;
@@ -161,9 +263,9 @@ function OrdersContent() {
   const pickupCount = orders.filter((o) => (o.order_type || o.fulfilment_mode) === 'pickup').length;
 
   const handleExportCSV = () => {
-    const headers = ['Order ID,Source,Outlet,Table/Room,Items,Status,Payment,Time,Amount'];
+    const headers = ['Order ID,Source,Outlet,Table/Room,Items,Status,Payment Mode,Time,Amount'];
     const rows = filteredOrders.map((o) => {
-      const location = o.room_number ? `Room ${o.room_number}` : o.table?.table_number || 'Takeaway/Online';
+      const location = getOrderLocation(o);
       const itemsList: any[] = o.items || o.order_lines || [];
       const total = o.total_amount_minor || o.total_minor || 0;
       return [
@@ -173,8 +275,8 @@ function OrdersContent() {
         `"${location}"`,
         `"${itemsList.length} items"`,
         o.status,
-        o.payment_status || 'Paid',
-        `"${new Date(o.created_at).toLocaleTimeString()}"`,
+        getPaymentMode(o).toUpperCase(),
+        `"${formatOrderTime(o.created_at)}"`,
         `"₹${(total / 100).toLocaleString()}"`,
       ].join(',');
     });
@@ -327,6 +429,17 @@ function OrdersContent() {
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </select>
+
+          <select
+            value={paymentFilter}
+            onChange={(e) => setPaymentFilter(e.target.value as any)}
+            className="px-2.5 py-1.5 rounded-lg border border-[#E8DCD2] text-xs bg-white focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
+          >
+            <option value="all">All Payment Modes</option>
+            <option value="upi">UPI</option>
+            <option value="cash">Cash Counter</option>
+            <option value="card">Card</option>
+          </select>
         </div>
       </div>
 
@@ -342,6 +455,7 @@ function OrdersContent() {
                 <th className="py-2.5 px-3">Table / Room</th>
                 <th className="py-2.5 px-3">Items Ordered</th>
                 <th className="py-2.5 px-3">Kitchen Status</th>
+                <th className="py-2.5 px-3">Payment Mode</th>
                 <th className="py-2.5 px-3">Order Time</th>
                 <th className="py-2.5 px-3">Total Amount</th>
                 <th className="py-2.5 px-3 text-right">Actions</th>
@@ -350,25 +464,16 @@ function OrdersContent() {
             <tbody className="divide-y divide-[#E8DCD2]/70 text-[#302421]">
               {filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-xs text-[#81736D]">
+                  <td colSpan={10} className="py-8 text-center text-xs text-[#81736D]">
                     No orders found matching your search or filters.
                   </td>
                 </tr>
               ) : (
                 filteredOrders.map((order) => {
-                  const locationBadge = order.room_number ? (
-                    <span className="px-2 py-0.5 rounded bg-[#F6EAE0] font-mono font-semibold text-[#4F0809] text-[11px]">
-                      Room {order.room_number}
-                    </span>
-                  ) : order.table?.table_number ? (
-                    <span className="px-2 py-0.5 rounded bg-[#F6EAE0] font-mono font-semibold text-[#4F0809] text-[11px]">
-                      {order.table.table_number}
-                    </span>
-                  ) : order.order_type === 'delivery' ? (
-                    <span className="px-2 py-0.5 rounded bg-[#F6EAE0] text-[#302421] text-[11px]">Online</span>
-                  ) : (
-                    <span className="px-2 py-0.5 rounded bg-[#F6EAE0] text-[#302421] text-[11px]">Counter</span>
-                  );
+                  const locationText = getOrderLocation(order);
+                  const isRoom = locationText.toLowerCase().startsWith('room');
+                  const isTable = locationText.toLowerCase().startsWith('table');
+                  const pMode = getPaymentMode(order);
 
                   const itemsList: any[] = order.items || order.order_lines || [];
                   const itemsCount = itemsList.reduce((sum: number, it: any) => sum + (it.quantity || 1), 0);
@@ -387,7 +492,19 @@ function OrdersContent() {
                         </div>
                       </td>
                       <td className="py-2.5 px-3 text-[#302421]">{order.outlet?.name || 'Restaurant'}</td>
-                      <td className="py-2.5 px-3">{locationBadge}</td>
+                      <td className="py-2.5 px-3">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded font-mono font-semibold text-[11px] ${
+                            isRoom
+                              ? 'bg-amber-50 text-amber-900 border border-amber-200'
+                              : isTable
+                              ? 'bg-[#F6EAE0] text-[#4F0809] border border-[#E8DCD2]'
+                              : 'bg-stone-100 text-stone-700 border border-stone-200'
+                          }`}
+                        >
+                          {locationText}
+                        </span>
+                      </td>
                       <td className="py-2.5 px-3 font-medium">
                         {itemsCount} {itemsCount === 1 ? 'item' : 'items'}
                       </td>
@@ -408,11 +525,26 @@ function OrdersContent() {
                           {order.status}
                         </span>
                       </td>
+                      <td className="py-2.5 px-3">
+                        <select
+                          value={pMode}
+                          onChange={(e) => handleUpdatePaymentMode(order.id, e.target.value as any)}
+                          onClick={(e) => e.stopPropagation()}
+                          className={`text-[11px] font-semibold px-2 py-1 rounded-md border cursor-pointer focus:outline-none transition ${
+                            pMode === 'upi'
+                              ? 'bg-purple-50 text-purple-700 border-purple-200'
+                              : pMode === 'cash'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-blue-50 text-blue-700 border-blue-200'
+                          }`}
+                        >
+                          <option value="upi">UPI</option>
+                          <option value="cash">Cash Counter</option>
+                          <option value="card">Card</option>
+                        </select>
+                      </td>
                       <td className="py-2.5 px-3 text-[#81736D]">
-                        {new Date(order.created_at).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
+                        {formatOrderTime(order.created_at)}
                       </td>
                       <td className="py-2.5 px-3 font-bold text-[#302421]">
                         ₹{(total / 100).toLocaleString('en-IN')}
@@ -460,27 +592,55 @@ function OrdersContent() {
               Palace KOT Order Folio
             </h2>
             <p className="text-xs text-[#81736D] mb-4">
-              Placed at {new Date(selectedOrder.created_at).toLocaleTimeString()} via {(selectedOrder.order_type || selectedOrder.fulfilment_mode || 'dine_in').replace('_', ' ')}
+              Placed at {formatOrderTime(selectedOrder.created_at)} via {(selectedOrder.order_type || selectedOrder.fulfilment_mode || 'dine_in').replace('_', ' ')}
             </p>
 
             <div className="space-y-3 text-xs">
               {/* Location & Context */}
               <div className="p-3 bg-[#FBF6EF] rounded-xl border border-[#E8DCD2] flex justify-between items-center">
                 <div>
-                  <div className="text-[10px] text-[#81736D] uppercase">Destination Location</div>
-                  <div className="font-semibold text-sm text-[#4F0809] mt-0.5">
-                    {selectedOrder.room_number
-                      ? `Suite Room ${selectedOrder.room_number}`
-                      : selectedOrder.table?.table_number
-                      ? `Table ${selectedOrder.table.table_number}`
-                      : 'Takeaway / Delivery Delivery'}
+                  <div className="text-[10px] text-[#81736D] uppercase font-bold tracking-wider">Destination Location</div>
+                  <div className="font-semibold text-sm text-[#4F0809] mt-0.5 font-mono">
+                    {getOrderLocation(selectedOrder)}
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-[10px] text-[#81736D] uppercase">Outlet Venue</div>
+                  <div className="text-[10px] text-[#81736D] uppercase font-bold tracking-wider">Outlet Venue</div>
                   <div className="font-semibold text-[#302421] mt-0.5">
                     {selectedOrder.outlet?.name || 'Rajasthani Restaurant'}
                   </div>
+                </div>
+              </div>
+
+              {/* Settlement Payment Mode */}
+              <div className="p-3 bg-[#FBF6EF] rounded-xl border border-[#E8DCD2]">
+                <div className="text-[10px] font-bold uppercase text-[#81736D] mb-2">
+                  Settlement Payment Mode
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'upi', label: 'UPI', icon: QrCode, activeCls: 'bg-purple-600 text-white border-purple-600 shadow-xs' },
+                    { id: 'cash', label: 'Cash Counter', icon: Banknote, activeCls: 'bg-emerald-600 text-white border-emerald-600 shadow-xs' },
+                    { id: 'card', label: 'Card', icon: CreditCard, activeCls: 'bg-blue-600 text-white border-blue-600 shadow-xs' },
+                  ].map((pm) => {
+                    const active = getPaymentMode(selectedOrder) === pm.id;
+                    const IconComp = pm.icon;
+                    return (
+                      <button
+                        key={pm.id}
+                        type="button"
+                        onClick={() => handleUpdatePaymentMode(selectedOrder.id, pm.id as any)}
+                        className={`py-2 px-2 rounded-lg border text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                          active
+                            ? pm.activeCls
+                            : 'border-[#E8DCD2] bg-white text-[#81736D] hover:text-[#302421] hover:bg-[#F6EAE0]'
+                        }`}
+                      >
+                        <IconComp className="w-3.5 h-3.5" />
+                        <span>{pm.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

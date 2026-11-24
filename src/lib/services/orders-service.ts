@@ -63,6 +63,8 @@ export const ordersService = {
   async createOrder(data: {
     outlet_id: string;
     table_id: string | null;
+    table_number?: string | null;
+    room_number?: string | null;
     channel: Order['channel'];
     fulfilment_mode: Order['fulfilment_mode'];
     pickup_name: string | null;
@@ -78,6 +80,8 @@ export const ordersService = {
     service_charge_minor: number;
     discount_minor: number;
     total_minor: number;
+    payment_mode?: 'upi' | 'cash' | 'card' | string;
+    payment_method?: string;
     order_lines: Array<{
       menu_item_id: string;
       item_name_snapshot: string;
@@ -141,5 +145,24 @@ export const ordersService = {
       console.warn('Firestore updateOrderStatus fallback:', err);
     }
     return dataRepository.updateOrderStatus(orderId, status, reason);
+  },
+
+  async updateOrderPaymentMode(orderId: string, payment_mode: 'upi' | 'cash' | 'card' | string): Promise<void> {
+    const payment_method = payment_mode === 'cash' ? 'Cash Counter' : payment_mode === 'card' ? 'Card' : 'UPI';
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      await updateDoc(orderRef, {
+        payment_mode,
+        payment_method,
+        updated_at: serverTimestamp(),
+      });
+    } catch (err) {
+      console.warn('Firestore updateOrderPaymentMode fallback:', err);
+    }
+    const local = dataRepository.getOrders().find((o) => o.id === orderId);
+    if (local) {
+      local.payment_mode = payment_mode;
+      local.payment_method = payment_method;
+    }
   },
 };

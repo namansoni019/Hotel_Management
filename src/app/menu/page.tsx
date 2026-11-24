@@ -30,6 +30,9 @@ import {
   MapPin,
   FileText,
   RefreshCw,
+  QrCode,
+  Banknote,
+  CreditCard,
 } from 'lucide-react';
 
 export type OrderingMethod = 'dine_in' | 'pickup' | 'delivery';
@@ -65,6 +68,7 @@ export default function MenuPage() {
   const [tableOrRoom, setTableOrRoom] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
+  const [paymentMode, setPaymentMode] = useState<'upi' | 'cash' | 'card'>('upi');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -330,6 +334,19 @@ export default function MenuPage() {
         line_total_minor: ci.item.price_minor * ci.quantity,
       }));
 
+      // Extract room vs table cleanly
+      let effectiveTableNo: string | null = null;
+      let effectiveRoomNo: string | null = null;
+      if (orderingMethod === 'dine_in' && tableOrRoom.trim()) {
+        const trimmed = tableOrRoom.trim();
+        const lower = trimmed.toLowerCase();
+        if (lower.startsWith('room') || lower.startsWith('suite')) {
+          effectiveRoomNo = trimmed.replace(/^(room|suite)\s*/i, '').trim() || trimmed;
+        } else {
+          effectiveTableNo = lower.startsWith('table') ? trimmed : `Table ${trimmed}`;
+        }
+      }
+
       const res = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -341,12 +358,16 @@ export default function MenuPage() {
           pickup_phone: customerPhone,
           delivery_address: orderingMethod === 'delivery' ? deliveryAddress : null,
           table_id: orderingMethod === 'dine_in' ? tableOrRoom : null,
+          table_number: effectiveTableNo,
+          room_number: effectiveRoomNo,
           delivery_notes: orderNotes || (orderingMethod === 'dine_in' ? `Table/Room: ${tableOrRoom}` : null),
           subtotal_minor: subtotalMinor,
           tax_minor: taxMinor,
           delivery_fee_minor: deliveryFeeMinor,
           packaging_fee_minor: packagingFeeMinor,
           total_minor: totalMinor,
+          payment_mode: paymentMode,
+          payment_method: paymentMode === 'cash' ? 'Cash Counter' : paymentMode === 'card' ? 'Card' : 'UPI',
           order_lines: orderLines,
         }),
       });
@@ -1370,6 +1391,41 @@ export default function MenuPage() {
                     onChange={(e) => setOrderNotes(e.target.value)}
                     className="w-full h-11 px-3.5 text-xs sm:text-sm rounded-xl bg-[#F5ECDC] focus:bg-[#EFE2CC] focus:outline-none text-[#4F0809] placeholder-[#856B4D]/55"
                   />
+                </div>
+
+                {/* Payment Mode Selector with 3 Modes */}
+                <div>
+                  <label className="block text-[10px] uppercase tracking-[0.14em] font-bold text-[#856B4D] mb-1.5">
+                    Payment Mode *
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'upi', label: 'UPI / QR', icon: QrCode, desc: 'Instant UPI' },
+                      { id: 'cash', label: 'Cash Counter', icon: Banknote, desc: 'Pay at Counter' },
+                      { id: 'card', label: 'Card', icon: CreditCard, desc: 'Credit / Debit' },
+                    ].map((m) => {
+                      const Icon = m.icon;
+                      const isSel = paymentMode === m.id;
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => setPaymentMode(m.id as any)}
+                          className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                            isSel
+                              ? 'border-[#4F0809] bg-[#4F0809] text-white shadow-xs'
+                              : 'border-[#E8DFCE] bg-[#F5ECDC] text-[#4F0809] hover:bg-[#EFE2CC]'
+                          }`}
+                        >
+                          <Icon className={`w-4 h-4 ${isSel ? 'text-[#D8AA67]' : 'text-[#856B4D]'}`} />
+                          <span className="text-[11px] font-bold leading-tight">{m.label}</span>
+                          <span className={`text-[9px] ${isSel ? 'text-[#FFF8EB]/80' : 'text-[#856B4D]'}`}>
+                            {m.desc}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 

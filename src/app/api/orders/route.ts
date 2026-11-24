@@ -20,6 +20,8 @@ export async function POST(request: Request) {
     const {
       outlet_id,
       table_id,
+      table_number,
+      room_number,
       channel,
       fulfilment_mode,
       pickup_name,
@@ -35,6 +37,8 @@ export async function POST(request: Request) {
       service_charge_minor,
       discount_minor,
       total_minor,
+      payment_mode,
+      payment_method,
       order_lines,
     } = body;
 
@@ -52,6 +56,23 @@ export async function POST(request: Request) {
     const effectiveDeliveryPhone = delivery_phone || pickup_phone || body.customer_phone || null;
     const effectiveNotes = delivery_notes || body.kitchen_notes || null;
 
+    // Detect table vs room from table_id or input
+    let effectiveTable = table_number || null;
+    let effectiveRoom = room_number || null;
+    if (table_id) {
+      const lower = String(table_id).toLowerCase().trim();
+      if (lower.includes('room') || lower.includes('suite')) {
+        effectiveRoom = effectiveRoom || table_id.replace(/^(room|suite)\s*/i, '').trim();
+      } else {
+        effectiveTable = effectiveTable || (lower.startsWith('table') ? table_id : `Table ${table_id}`);
+      }
+    }
+
+    const effectivePaymentMode = payment_mode || 'upi';
+    const effectivePaymentMethod = payment_method || (
+      effectivePaymentMode === 'cash' ? 'Cash Counter' : effectivePaymentMode === 'card' ? 'Card' : 'UPI'
+    );
+
     if (!outlet_id || !channel || !fulfilment_mode || effectiveLines.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Missing required order fields or order lines' },
@@ -62,6 +83,8 @@ export async function POST(request: Request) {
     const order = await ordersService.createOrder({
       outlet_id,
       table_id: table_id || null,
+      table_number: effectiveTable,
+      room_number: effectiveRoom,
       channel,
       fulfilment_mode,
       pickup_name: pickup_name || effectiveDeliveryName,
@@ -77,6 +100,8 @@ export async function POST(request: Request) {
       service_charge_minor: service_charge_minor || 0,
       discount_minor: discount_minor || 0,
       total_minor: total_minor || 0,
+      payment_mode: effectivePaymentMode,
+      payment_method: effectivePaymentMethod,
       order_lines: effectiveLines,
     });
 
@@ -84,5 +109,26 @@ export async function POST(request: Request) {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Server error';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    const { orderId, status, cancel_reason, payment_mode, payment_method, table_number, room_number } = body;
+    if (!orderId) {
+      return NextResponse.json({ success: false, error: 'Missing orderId' }, { status: 400 });
+    }
+
+    if (payment_mode) {
+      await ordersService.updateOrderPaymentMode(orderId, payment_mode);
+    }
+    if (status) {
+      await ordersService.updateOrderStatus(orderId, status, cancel_reason);
+    }
+
+    return NextResponse.json({ success: true, message: 'Order updated' });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

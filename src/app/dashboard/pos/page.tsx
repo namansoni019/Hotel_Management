@@ -476,6 +476,40 @@ export default function POSBillingPage() {
             ? `ROOM FOLIO (Room ${folioGuest?.room?.room_number || 'Chamber'} - ${folioGuest?.guest?.name || 'Guest'})`
             : pgTab.toUpperCase();
 
+        // Map payment mode for central order tracking (upi, cash, card)
+        const pMode = pgTab === 'cash' ? 'cash' : pgTab === 'card' ? 'card' : 'upi';
+        const tableNum = selectedTable ? `Table ${selectedTable.number}` : null;
+        const roomNum = orderType === 'room_service' && folioGuest?.room?.room_number ? folioGuest.room.room_number : null;
+
+        // Persist to Central Palace Orders Database (Firestore)
+        try {
+          fetch('/api/orders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              order_type: orderType === 'takeaway' ? 'pickup' : orderType,
+              table_number: tableNum,
+              room_number: roomNum,
+              payment_mode: pMode,
+              payment_method: pMode,
+              items: cart.map((ci) => ({
+                item_name_snapshot: ci.name,
+                quantity: ci.quantity,
+                unit_price_minor: Math.round(ci.price * 100),
+                notes: ci.modifier || '',
+                total_minor: Math.round(ci.price * ci.quantity * 100),
+              })),
+              customer_name: selectedCustomer?.name || 'Walk-in Guest',
+              customer_phone: selectedCustomer?.phone || '',
+              total_minor: Math.round(finalTotal * 100),
+              notes: specialNote,
+              source: 'POS Billing',
+            }),
+          }).catch((e) => console.warn('Sync POS order to central DB failed:', e));
+        } catch (e) {
+          console.warn('Sync POS order to central DB failed:', e);
+        }
+
         setCompletedOrder({
           orderId,
           items: [...cart],
@@ -500,7 +534,7 @@ export default function POSBillingPage() {
         setPgSuccess(false);
       }, 2000);
     }, 3000);
-  }, [cart, discountAmount, finalTotal, orderType, pgTab, selectedCustomer, selectedTable, subtotal, tax, deliveryCharge, packagingCharge]);
+  }, [cart, discountAmount, finalTotal, orderType, pgTab, selectedCustomer, selectedTable, subtotal, tax, deliveryCharge, packagingCharge, specialNote, selectedFolioResId, inHouseGuests]);
 
   // Cash change calculation
   const cashReceived = parseFloat(pgCashReceived) || 0;

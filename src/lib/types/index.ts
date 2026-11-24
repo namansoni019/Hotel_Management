@@ -280,6 +280,7 @@ export interface Order {
   channel: OrderChannel;
   fulfilment_mode: FulfilmentMode;
   order_type?: 'dine_in' | 'room_service' | 'delivery' | 'pickup';
+  table_number?: string | null;
   room_number?: string | null;
   pickup_name: string | null;
   pickup_phone: string | null;
@@ -297,6 +298,8 @@ export interface Order {
   total_amount_minor?: number;
   status: OrderStatus;
   payment_status?: string;
+  payment_mode?: 'upi' | 'cash' | 'card' | string;
+  payment_method?: string;
   cancel_reason: string | null;
   created_by: string | null;
   assigned_delivery_staff: string | null;

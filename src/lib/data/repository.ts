@@ -619,6 +619,16 @@ export const dataRepository = {
     };
     return ordersState[idx];
   },
+  updateOrderPaymentMode(orderId: string, payment_mode: 'upi' | 'cash' | 'card' | string): Order | null {
+    const idx = ordersState.findIndex((o) => o.id === orderId);
+    if (idx === -1) return null;
+    ordersState[idx] = {
+      ...ordersState[idx],
+      payment_mode,
+      payment_method: payment_mode,
+    };
+    return ordersState[idx];
+  },
 
   // ── Inventory & Stock ──
   getInventory(): InventoryItem[] {
