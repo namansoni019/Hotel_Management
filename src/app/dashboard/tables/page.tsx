@@ -131,7 +131,7 @@ export function RoyalSelect<T extends string>({
         <div
           className={`absolute ${
             align === 'right' ? 'right-0' : 'left-0'
-          } top-full mt-1.5 min-w-full w-max max-w-xs bg-[#FDF8EE] border border-[#D8AA67]/60 rounded-2xl shadow-2xl z-50 py-1.5 text-xs text-[#4F0809] animate-fade-in max-h-60 overflow-y-auto ${dropdownClassName}`}
+          } top-full mt-1.5 w-full min-w-[200px] bg-[#FDF8EE] border border-[#D8AA67]/70 rounded-2xl shadow-2xl z-50 py-1.5 text-xs text-[#4F0809] animate-fade-in max-h-60 overflow-y-auto ${dropdownClassName}`}
         >
           {options.map((opt) => {
             const isSelected = opt.value === value;
@@ -1268,14 +1268,14 @@ export default function TablesReservationsPage() {
 
       {/* ── MODAL: Edit Dining Table (Palace Heritage Theme) ── */}
       {isEditTableOpen && editingTable && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-3xl max-w-md w-full overflow-hidden shadow-2xl relative text-[#4F0809] animate-fade-in">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-3xl max-w-xl md:max-w-2xl w-full shadow-2xl relative text-[#4F0809] animate-fade-in my-8">
             {/* Royal Maroon Header */}
-            <div className="bg-gradient-to-r from-[#4F0809] via-[#651012] to-[#4F0809] text-[#FFF8EB] p-5 relative border-b border-[#D8AA67]/40">
+            <div className="bg-gradient-to-r from-[#4F0809] via-[#651012] to-[#4F0809] text-[#FFF8EB] p-6 relative border-b border-[#D8AA67]/40 rounded-t-3xl">
               <button
                 type="button"
                 onClick={() => setIsEditTableOpen(false)}
-                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#D8AA67] flex items-center justify-center transition-colors cursor-pointer"
+                className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#D8AA67] flex items-center justify-center transition-colors cursor-pointer"
                 aria-label="Close dialog"
               >
                 ✕
@@ -1310,7 +1310,7 @@ export default function TablesReservationsPage() {
               </div>
             )}
 
-            <form onSubmit={handleEditTableSubmit} className="p-5 sm:p-6 space-y-3.5 text-xs">
+            <form onSubmit={handleEditTableSubmit} className="p-6 sm:p-7 space-y-4 text-xs">
               {/* Category Quick Select */}
               <div>
                 <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
@@ -1465,14 +1465,14 @@ export default function TablesReservationsPage() {
 
       {/* ── MODAL: Add New Dining Table (Palace Heritage Theme) ── */}
       {isAddTableOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-3xl max-w-md w-full overflow-hidden shadow-2xl relative text-[#4F0809] animate-fade-in">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-3xl max-w-xl md:max-w-2xl w-full shadow-2xl relative text-[#4F0809] animate-fade-in my-8">
             {/* Royal Maroon Header */}
-            <div className="bg-gradient-to-r from-[#4F0809] via-[#651012] to-[#4F0809] text-[#FFF8EB] p-5 relative border-b border-[#D8AA67]/40">
+            <div className="bg-gradient-to-r from-[#4F0809] via-[#651012] to-[#4F0809] text-[#FFF8EB] p-6 relative border-b border-[#D8AA67]/40 rounded-t-3xl">
               <button
                 type="button"
                 onClick={() => setIsAddTableOpen(false)}
-                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#D8AA67] flex items-center justify-center transition-colors cursor-pointer"
+                className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#D8AA67] flex items-center justify-center transition-colors cursor-pointer"
                 aria-label="Close dialog"
               >
                 ✕
@@ -1507,7 +1507,7 @@ export default function TablesReservationsPage() {
               </div>
             )}
 
-            <form onSubmit={handleAddTableSubmit} className="p-5 sm:p-6 space-y-3.5 text-xs">
+            <form onSubmit={handleAddTableSubmit} className="p-6 sm:p-7 space-y-4 text-xs">
               {/* Category Quick Select */}
               <div>
                 <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
@@ -1749,14 +1749,14 @@ export default function TablesReservationsPage() {
 
       {/* ── MODAL: Create Table Reservation (Palace Heritage Theme) ── */}
       {isNewResModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-3xl max-w-md w-full overflow-hidden shadow-2xl relative text-[#4F0809] animate-fade-in">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-3xl max-w-xl md:max-w-2xl w-full shadow-2xl relative text-[#4F0809] animate-fade-in my-8">
             {/* Royal Maroon Header */}
-            <div className="bg-gradient-to-r from-[#4F0809] via-[#651012] to-[#4F0809] text-[#FFF8EB] p-5 relative border-b border-[#D8AA67]/40">
+            <div className="bg-gradient-to-r from-[#4F0809] via-[#651012] to-[#4F0809] text-[#FFF8EB] p-6 relative border-b border-[#D8AA67]/40 rounded-t-3xl">
               <button
                 type="button"
                 onClick={() => setIsNewResModalOpen(false)}
-                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#D8AA67] flex items-center justify-center transition-colors cursor-pointer"
+                className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#D8AA67] flex items-center justify-center transition-colors cursor-pointer"
                 aria-label="Close dialog"
               >
                 ✕
@@ -1791,7 +1791,7 @@ export default function TablesReservationsPage() {
               </div>
             )}
 
-            <form onSubmit={handleCreateReservation} className="p-5 sm:p-6 space-y-3.5 text-xs">
+            <form onSubmit={handleCreateReservation} className="p-6 sm:p-7 space-y-4 text-xs">
               <div>
                 <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                   Guest Full Name *
