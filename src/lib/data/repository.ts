@@ -210,6 +210,8 @@ export const dataRepository = {
     roomId?: string;
     checkIn: string;
     checkOut: string;
+    checkInTime?: string;
+    checkOutTime?: string;
     partySize: number;
     notes?: string;
     aadhaarDetails?: GuestAadhaarDetail[];
@@ -232,6 +234,8 @@ export const dataRepository = {
       room_id: assignedRoom?.id || (roomsState.length > 0 ? roomsState[0].id : null),
       check_in: data.checkIn,
       check_out: data.checkOut,
+      check_in_time: data.checkInTime || '12:00 PM',
+      check_out_time: data.checkOutTime || '11:00 AM',
       party_size: data.partySize,
       rate_snapshot_minor: rt ? rt.base_rate_minor : 520000,
       terms_snapshot: 'Standard royal booking guarantee',

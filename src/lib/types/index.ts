@@ -146,6 +146,8 @@ export interface Reservation {
   room_id: string | null;
   check_in: string;
   check_out: string;
+  check_in_time?: string;
+  check_out_time?: string;
   party_size: number;
   rate_snapshot_minor: number;
   terms_snapshot: string;

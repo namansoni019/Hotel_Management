@@ -61,6 +61,8 @@ export const reservationsService = {
     roomId?: string;
     checkIn: string;
     checkOut: string;
+    checkInTime?: string;
+    checkOutTime?: string;
     partySize: number;
     guestName: string;
     guestPhone: string;

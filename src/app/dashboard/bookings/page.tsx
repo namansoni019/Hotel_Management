@@ -36,6 +36,7 @@ import { db } from '@/lib/firebase';
 import { reservationsService } from '@/lib/services/reservations-service';
 import { dataRepository } from '@/lib/data/repository';
 import PalaceDatePicker from '@/components/ui/palace-date-picker';
+import PalaceTimePicker from '@/components/ui/palace-time-picker';
 import type { Reservation, RoomType, Room, GuestAadhaarDetail } from '@/lib/types';
 
 function generateSampleAadhaarSvg(name: string, aadhaarNum: string): string {
@@ -116,6 +117,8 @@ export default function RoomBookingsPage() {
   const [formRoomId, setFormRoomId] = useState('');
   const [formCheckIn, setFormCheckIn] = useState('2026-10-19');
   const [formCheckOut, setFormCheckOut] = useState('2026-10-21');
+  const [formCheckInTime, setFormCheckInTime] = useState('12:00 PM');
+  const [formCheckOutTime, setFormCheckOutTime] = useState('11:00 AM');
   const [formPartySize, setFormPartySize] = useState('2');
   const [formNotes, setFormNotes] = useState('');
   const [formError, setFormError] = useState('');
@@ -414,6 +417,8 @@ export default function RoomBookingsPage() {
         roomId: formRoomId || undefined,
         checkIn: formCheckIn,
         checkOut: formCheckOut,
+        checkInTime: formCheckInTime,
+        checkOutTime: formCheckOutTime,
         partySize: partyCount,
         notes: formNotes.trim(),
         aadhaarDetails: aadhaarDetailsPayload,
@@ -427,6 +432,8 @@ export default function RoomBookingsPage() {
         roomId: formRoomId || undefined,
         checkIn: formCheckIn,
         checkOut: formCheckOut,
+        checkInTime: formCheckInTime,
+        checkOutTime: formCheckOutTime,
         partySize: partyCount,
         notes: formNotes.trim(),
         aadhaarDetails: aadhaarDetailsPayload,
@@ -439,6 +446,8 @@ export default function RoomBookingsPage() {
     setFormEmail('');
     setFormNotes('');
     setFormError('');
+    setFormCheckInTime('12:00 PM');
+    setFormCheckOutTime('11:00 AM');
     setFormGuestAadhaars([
       { fullName: '', aadhaarNumber: '', aadhaarImage: '' },
       { fullName: '', aadhaarNumber: '', aadhaarImage: '' },
@@ -447,7 +456,7 @@ export default function RoomBookingsPage() {
   };
 
   const handleExportCSV = () => {
-    const headers = ['Booking ID,Guest Name,Phone,Room Type,Room Number,Check-In,Check-Out,Guests,Status,Amount'];
+    const headers = ['Booking ID,Guest Name,Phone,Room Type,Room Number,Check-In Date,Check-In Time,Check-Out Date,Check-Out Time,Guests,Status,Amount'];
     const rows = filteredReservations.map((r) => [
       `"${r.reference_code}"`,
       `"${r.guest?.name || 'Walk-in'}"`,
@@ -455,7 +464,9 @@ export default function RoomBookingsPage() {
       `"${r.room_type?.name || 'Heritage Suite'}"`,
       `"${r.room?.room_number || 'TBD'}"`,
       `"${new Date(r.check_in).toLocaleDateString()}"`,
+      `"${r.check_in_time || '12:00 PM'}"`,
       `"${new Date(r.check_out).toLocaleDateString()}"`,
+      `"${r.check_out_time || '11:00 AM'}"`,
       r.party_size,
       r.status,
       `"₹${(r.rate_snapshot_minor / 100).toLocaleString()}"`,
@@ -750,7 +761,11 @@ export default function RoomBookingsPage() {
                         </div>
                       </td>
                       <td className="py-2.5 px-3 text-[11px] text-[#302421]">
-                        {checkInStr} → {checkOutStr}
+                        <div className="font-semibold">{checkInStr} → {checkOutStr}</div>
+                        <div className="text-[10px] text-[#81736D] flex items-center gap-1 mt-0.5">
+                          <Clock className="w-2.5 h-2.5 text-[#D8AA67]" />
+                          <span>{res.check_in_time || '12:00 PM'} – {res.check_out_time || '11:00 AM'}</span>
+                        </div>
                       </td>
                       <td className="py-2.5 px-3">{res.party_size} Guests</td>
                       <td className="py-2.5 px-3">
@@ -904,11 +919,21 @@ export default function RoomBookingsPage() {
               <div className="p-3.5 bg-[#F5ECDC] border border-[#E8DFCE] rounded-xl space-y-1.5">
                 <div className="flex justify-between">
                   <span className="text-[#856B4D] font-semibold">Check-In:</span>
-                  <span className="font-bold text-[#4F0809]">{new Date(selectedBooking.check_in).toLocaleDateString()}</span>
+                  <span className="font-bold text-[#4F0809]">
+                    {new Date(selectedBooking.check_in).toLocaleDateString()}
+                    <span className="text-xs text-[#856B4D] font-medium ml-1.5">
+                      at {selectedBooking.check_in_time || '12:00 PM'}
+                    </span>
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[#856B4D] font-semibold">Check-Out:</span>
-                  <span className="font-bold text-[#4F0809]">{new Date(selectedBooking.check_out).toLocaleDateString()}</span>
+                  <span className="font-bold text-[#4F0809]">
+                    {new Date(selectedBooking.check_out).toLocaleDateString()}
+                    <span className="text-xs text-[#856B4D] font-medium ml-1.5">
+                      at {selectedBooking.check_out_time || '11:00 AM'}
+                    </span>
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[#856B4D] font-semibold">Party Size:</span>
@@ -1220,6 +1245,24 @@ export default function RoomBookingsPage() {
                     minDate={formCheckIn}
                     value={formCheckOut}
                     onChange={(val) => setFormCheckOut(val)}
+                  />
+                </div>
+
+                {/* Check-In Time & Check-Out Time with Custom Royal Time Picker */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <PalaceTimePicker
+                    label="Check-In Time"
+                    required
+                    value={formCheckInTime}
+                    onChange={setFormCheckInTime}
+                    hint="Standard palace check-in starts at 12:00 PM"
+                  />
+                  <PalaceTimePicker
+                    label="Check-Out Time"
+                    required
+                    value={formCheckOutTime}
+                    onChange={setFormCheckOutTime}
+                    hint="Standard palace check-out is by 11:00 AM"
                   />
                 </div>
 
