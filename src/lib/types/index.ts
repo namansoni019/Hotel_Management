@@ -300,6 +300,10 @@ export interface Order {
   payment_status?: string;
   payment_mode?: 'upi' | 'cash' | 'card' | string;
   payment_method?: string;
+  payment_id?: string | null;
+  tendered_amount_minor?: number | null;
+  change_amount_minor?: number | null;
+  settled_at?: string | null;
   cancel_reason: string | null;
   created_by: string | null;
   assigned_delivery_staff: string | null;
