@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import QRCode from 'qrcode';
 import {
   Armchair,
@@ -65,6 +65,105 @@ export function getTableCategory(t: Table): 'room' | 'cafe' | 'hall' | 'restaura
   return 'restaurant';
 }
 
+export function RoyalSelect<T extends string>({
+  value,
+  onChange,
+  options,
+  placeholder = 'Select...',
+  className = '',
+  buttonClassName = '',
+  dropdownClassName = '',
+  align = 'left',
+}: {
+  value: T;
+  onChange: (val: T) => void;
+  options: { value: T; label: string; icon?: React.ReactNode; dotColor?: string }[];
+  placeholder?: string;
+  className?: string;
+  buttonClassName?: string;
+  dropdownClassName?: string;
+  align?: 'left' | 'right';
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const selectedOption = options.find((o) => o.value === value);
+
+  return (
+    <div ref={containerRef} className={`relative ${className}`}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={
+          buttonClassName ||
+          `w-full flex items-center justify-between px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#4F0809] font-bold transition cursor-pointer shadow-2xs`
+        }
+      >
+        <span className="flex items-center gap-1.5 truncate">
+          {selectedOption?.dotColor && (
+            <span className={`w-2 h-2 rounded-full shrink-0 ${selectedOption.dotColor}`} />
+          )}
+          {selectedOption?.icon && <span className="shrink-0">{selectedOption.icon}</span>}
+          <span className="truncate">{selectedOption?.label || placeholder}</span>
+        </span>
+        <ChevronDown
+          className={`w-3.5 h-3.5 shrink-0 text-[#856B4D] transition-transform duration-200 ml-1.5 ${
+            isOpen ? 'rotate-180' : ''
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          className={`absolute ${
+            align === 'right' ? 'right-0' : 'left-0'
+          } top-full mt-1.5 min-w-full w-max max-w-xs bg-[#FDF8EE] border border-[#D8AA67]/60 rounded-2xl shadow-2xl z-50 py-1.5 text-xs text-[#4F0809] animate-fade-in max-h-60 overflow-y-auto ${dropdownClassName}`}
+        >
+          {options.map((opt) => {
+            const isSelected = opt.value === value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => {
+                  onChange(opt.value);
+                  setIsOpen(false);
+                }}
+                className={`w-full text-left px-3.5 py-2 flex items-center justify-between gap-2.5 hover:bg-[#F5ECDC] transition cursor-pointer text-xs ${
+                  isSelected ? 'bg-[#4F0809]/10 font-bold text-[#4F0809]' : 'text-[#5C4535] font-medium'
+                }`}
+              >
+                <div className="flex items-center gap-2 truncate">
+                  {opt.dotColor && (
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dotColor}`} />
+                  )}
+                  {opt.icon && <span className="shrink-0">{opt.icon}</span>}
+                  <span className="truncate">{opt.label}</span>
+                </div>
+                {isSelected && <Check className="w-3.5 h-3.5 text-[#D8AA67] shrink-0" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TablesReservationsPage() {
   const [tables, setTables] = useState<Table[]>([]);
   const [reservations, setReservations] = useState<TableReservation[]>([]);
@@ -96,7 +195,6 @@ export default function TablesReservationsPage() {
   const [formPhone, setFormPhone] = useState('');
   const [formOutletId, setFormOutletId] = useState('');
   const [formTableNumber, setFormTableNumber] = useState('');
-  const [formTime, setFormTime] = useState('07:30 PM');
   const [formDate, setFormDate] = useState('');
   const [formPartySize, setFormPartySize] = useState('4');
   const [formNotes, setFormNotes] = useState('');
@@ -474,7 +572,7 @@ export default function TablesReservationsPage() {
           outlet_id: formOutletId,
           outlet_name: outletObj?.name || 'Rajmahal Royal Dining',
           table_number: formTableNumber,
-          reservation_time: `${formDate} ${formTime}`,
+          reservation_time: formDate || new Date().toISOString().split('T')[0],
           party_size: parseInt(formPartySize) || 4,
           notes: formNotes.trim(),
         }),
@@ -499,7 +597,7 @@ export default function TablesReservationsPage() {
         outlet_id: formOutletId,
         outlet_name: outletObj?.name || 'Rajmahal Royal Dining',
         table_number: formTableNumber,
-        reservation_time: `${formDate} ${formTime}`,
+        reservation_time: formDate || new Date().toISOString().split('T')[0],
         party_size: parseInt(formPartySize) || 4,
         status: 'confirmed',
         notes: formNotes.trim(),
@@ -566,35 +664,6 @@ export default function TablesReservationsPage() {
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
-
-  // Standard operational time options
-  const timeOptions = [
-    '11:00 AM',
-    '11:30 AM',
-    '12:00 PM',
-    '12:30 PM',
-    '01:00 PM',
-    '01:30 PM',
-    '02:00 PM',
-    '02:30 PM',
-    '03:00 PM',
-    '03:30 PM',
-    '04:00 PM',
-    '04:30 PM',
-    '05:00 PM',
-    '05:30 PM',
-    '06:00 PM',
-    '06:30 PM',
-    '07:00 PM',
-    '07:30 PM',
-    '08:00 PM',
-    '08:30 PM',
-    '09:00 PM',
-    '09:30 PM',
-    '10:00 PM',
-    '10:30 PM',
-    '11:00 PM',
-  ];
 
   return (
     <div className="space-y-4">
@@ -810,36 +879,36 @@ export default function TablesReservationsPage() {
           {/* Palace Dropdowns */}
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
             {/* Palace Venue / Room Dropdown */}
-            <div className="relative">
-              <select
-                value={venueFilter}
-                onChange={(e) => setVenueFilter(e.target.value)}
-                className="appearance-none pl-3 pr-8 py-1.5 rounded-xl border border-[#D8AA67]/60 bg-[#FAF6EF] hover:bg-white text-xs font-bold text-[#4F0809] focus:ring-1 focus:ring-[#4F0809] focus:outline-none transition cursor-pointer shadow-2xs"
-              >
-                <option value="all">All Venues &amp; Room Tables ({totalTables})</option>
-                <option value="restaurant">🍽️ Rajmahal Royal Dining ({restaurantCount})</option>
-                <option value="cafe">☕ The Palace Courtyard Café ({cafeCount})</option>
-                <option value="room">🛏️ In-Room Dining / Room Tables ({roomCount})</option>
-                <option value="hall">🎉 Grand Celebration Hall ({hallCount})</option>
-              </select>
-              <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-[#856B4D]" />
-            </div>
+            <RoyalSelect
+              value={venueFilter}
+              onChange={(val) => setVenueFilter(val)}
+              options={[
+                { value: 'all', label: `All Venues & Room Tables (${totalTables})`, icon: '🏛️' },
+                { value: 'restaurant', label: `Rajmahal Royal Dining (${restaurantCount})`, icon: '🍽️' },
+                { value: 'cafe', label: `The Palace Courtyard Café (${cafeCount})`, icon: '☕' },
+                { value: 'room', label: `In-Room Dining / Room Tables (${roomCount})`, icon: '🛏️' },
+                { value: 'hall', label: `Grand Celebration Hall (${hallCount})`, icon: '🎉' },
+              ]}
+              buttonClassName="pl-3 pr-2.5 py-1.5 rounded-xl border border-[#D8AA67]/60 bg-[#FAF6EF] hover:bg-white text-xs font-bold text-[#4F0809] focus:outline-none transition cursor-pointer shadow-2xs flex items-center justify-between gap-1.5"
+              dropdownClassName="min-w-[240px]"
+              align="right"
+            />
 
             {/* Table State Filter */}
-            <div className="relative">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="appearance-none pl-3 pr-8 py-1.5 rounded-xl border border-[#D8AA67]/60 bg-[#FAF6EF] hover:bg-white text-xs font-bold text-[#4F0809] focus:ring-1 focus:ring-[#4F0809] focus:outline-none transition cursor-pointer shadow-2xs"
-              >
-                <option value="all">All Statuses</option>
-                <option value="available">● Available Ready</option>
-                <option value="occupied">● Occupied Live</option>
-                <option value="reserved">● Reserved</option>
-                <option value="cleaning">● Needs Cleaning</option>
-              </select>
-              <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-[#856B4D]" />
-            </div>
+            <RoyalSelect
+              value={statusFilter}
+              onChange={(val) => setStatusFilter(val)}
+              options={[
+                { value: 'all', label: 'All Statuses' },
+                { value: 'available', label: 'Available Ready', dotColor: 'bg-emerald-600' },
+                { value: 'occupied', label: 'Occupied Live', dotColor: 'bg-[#4F0809]' },
+                { value: 'reserved', label: 'Reserved', dotColor: 'bg-[#B78A48]' },
+                { value: 'cleaning', label: 'Needs Cleaning', dotColor: 'bg-amber-500' },
+              ]}
+              buttonClassName="pl-3 pr-2.5 py-1.5 rounded-xl border border-[#D8AA67]/60 bg-[#FAF6EF] hover:bg-white text-xs font-bold text-[#4F0809] focus:outline-none transition cursor-pointer shadow-2xs flex items-center justify-between gap-1.5"
+              dropdownClassName="min-w-[170px]"
+              align="right"
+            />
           </div>
         </div>
       </div>
@@ -886,33 +955,17 @@ export default function TablesReservationsPage() {
               return (
                 <div
                   key={table.id}
-                  className={`p-4 rounded-2xl border shadow-xs transition hover:shadow-md flex flex-col justify-between relative min-h-[175px] ${cardBg}`}
+                  className={`p-4 rounded-3xl border shadow-xs transition hover:shadow-md flex flex-col justify-between relative min-h-[185px] ${cardBg}`}
                 >
-                  {/* Top Bar: Table Number, Outlet Badge & Status Dropper */}
+                  {/* Top Section: Category Badge + Status Dropper */}
                   <div>
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="text-2xl font-bold tracking-tight"
-                            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
-                          >
-                            {table.table_number}
-                          </span>
-                          <span
-                            className={`text-[9px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${catBadge.style}`}
-                          >
-                            <span>{catBadge.icon}</span>
-                            <span>{catBadge.label}</span>
-                          </span>
-                        </div>
-                        <div className="text-[11px] opacity-80 flex items-center gap-1 mt-1 font-medium">
-                          <MapPin className="w-3 h-3 shrink-0 text-[#D8AA67]" />
-                          <span className="truncate max-w-[140px]">
-                            {table.location || (tableCat === 'room' ? 'In-Suite Chamber Dining' : 'Palace Dining Hall')}
-                          </span>
-                        </div>
-                      </div>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span
+                        className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 shrink-0 ${catBadge.style}`}
+                      >
+                        <span>{catBadge.icon}</span>
+                        <span>{catBadge.label}</span>
+                      </span>
 
                       {/* Interactive Status Dropper Button */}
                       <div className="relative table-status-dropper-container shrink-0">
@@ -931,54 +984,85 @@ export default function TablesReservationsPage() {
                               ? 'bg-[#B78A48] text-white border-[#B78A48] hover:bg-[#9B7235]'
                               : isCleaning
                               ? 'bg-amber-200 text-amber-900 border-amber-300 hover:bg-amber-300'
-                              : 'bg-[#2E7D32]/15 text-[#2E7D32] border-[#2E7D32]/30 hover:bg-[#2E7D32]/25'
+                              : 'bg-emerald-700/15 text-emerald-800 border-emerald-600/30 hover:bg-emerald-700/25'
                           }`}
                         >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                              isOccupied
+                                ? 'bg-red-300'
+                                : isReserved
+                                ? 'bg-amber-300'
+                                : isCleaning
+                                ? 'bg-amber-600'
+                                : 'bg-emerald-600'
+                            }`}
+                          />
                           <span>
                             {isOccupied
-                              ? '● Occupied'
+                              ? 'Occupied'
                               : isReserved
-                              ? '● Reserved'
+                              ? 'Reserved'
                               : isCleaning
-                              ? '● Cleaning'
-                              : '● Available'}
+                              ? 'Cleaning'
+                              : 'Available'}
                           </span>
                           <ChevronDown className="w-3 h-3 opacity-80" />
                         </button>
 
-                        {/* Dropper Menu */}
+                        {/* Dropper Menu (Royal Palace Theme - stays inside card) */}
                         {activeStatusMenuTableId === table.id && (
-                          <div className="absolute right-0 top-full mt-1.5 w-40 bg-white border border-[#E8DCD2] rounded-xl shadow-2xl z-30 py-1 text-xs text-[#302421]">
+                          <div className="absolute right-0 top-full mt-1.5 w-44 bg-[#FDF8EE] border border-[#D8AA67]/70 rounded-2xl shadow-2xl z-40 p-1.5 text-xs text-[#4F0809] animate-fade-in">
                             <button
                               type="button"
                               onClick={() => handleUpdateTableStatus(table.id, 'available')}
-                              className="w-full text-left px-3 py-2 hover:bg-[#FBF6EF] flex items-center justify-between text-[#2E7D32] font-semibold cursor-pointer"
+                              className={`w-full text-left px-3 py-1.5 rounded-xl hover:bg-[#F5ECDC] flex items-center justify-between text-emerald-800 font-bold cursor-pointer transition ${
+                                isAvailable ? 'bg-[#4F0809]/10' : ''
+                              }`}
                             >
-                              <span>● Available Ready</span>
-                              {isAvailable && <Check className="w-3.5 h-3.5 text-[#2E7D32]" />}
+                              <span className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0" />
+                                <span>Available Ready</span>
+                              </span>
+                              {isAvailable && <Check className="w-3.5 h-3.5 text-emerald-700" />}
                             </button>
                             <button
                               type="button"
                               onClick={() => handleUpdateTableStatus(table.id, 'occupied')}
-                              className="w-full text-left px-3 py-2 hover:bg-[#FBF6EF] flex items-center justify-between text-[#4F0809] font-semibold cursor-pointer"
+                              className={`w-full text-left px-3 py-1.5 rounded-xl hover:bg-[#F5ECDC] flex items-center justify-between text-[#4F0809] font-bold cursor-pointer transition ${
+                                isOccupied ? 'bg-[#4F0809]/10' : ''
+                              }`}
                             >
-                              <span>● Mark Occupied</span>
+                              <span className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-[#4F0809] shrink-0" />
+                                <span>Mark Occupied</span>
+                              </span>
                               {isOccupied && <Check className="w-3.5 h-3.5 text-[#4F0809]" />}
                             </button>
                             <button
                               type="button"
                               onClick={() => handleUpdateTableStatus(table.id, 'reserved')}
-                              className="w-full text-left px-3 py-2 hover:bg-[#FBF6EF] flex items-center justify-between text-[#B78A48] font-semibold cursor-pointer"
+                              className={`w-full text-left px-3 py-1.5 rounded-xl hover:bg-[#F5ECDC] flex items-center justify-between text-[#B78A48] font-bold cursor-pointer transition ${
+                                isReserved ? 'bg-[#4F0809]/10' : ''
+                              }`}
                             >
-                              <span>● Mark Reserved</span>
+                              <span className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-[#B78A48] shrink-0" />
+                                <span>Mark Reserved</span>
+                              </span>
                               {isReserved && <Check className="w-3.5 h-3.5 text-[#B78A48]" />}
                             </button>
                             <button
                               type="button"
                               onClick={() => handleUpdateTableStatus(table.id, 'cleaning')}
-                              className="w-full text-left px-3 py-2 hover:bg-[#FBF6EF] flex items-center justify-between text-amber-800 font-semibold cursor-pointer"
+                              className={`w-full text-left px-3 py-1.5 rounded-xl hover:bg-[#F5ECDC] flex items-center justify-between text-amber-800 font-bold cursor-pointer transition ${
+                                isCleaning ? 'bg-[#4F0809]/10' : ''
+                              }`}
                             >
-                              <span>● Needs Cleaning</span>
+                              <span className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-amber-600 shrink-0" />
+                                <span>Needs Cleaning</span>
+                              </span>
                               {isCleaning && <Check className="w-3.5 h-3.5 text-amber-800" />}
                             </button>
                           </div>
@@ -986,21 +1070,38 @@ export default function TablesReservationsPage() {
                       </div>
                     </div>
 
+                    {/* Table Title and Location */}
+                    <div className="mb-2">
+                      <div
+                        className="text-2xl font-bold tracking-tight truncate leading-tight"
+                        style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+                        title={table.table_number}
+                      >
+                        {table.table_number}
+                      </div>
+                      <div className="text-[11px] opacity-80 flex items-center gap-1 mt-0.5 font-medium truncate">
+                        <MapPin className="w-3 h-3 shrink-0 text-[#D8AA67]" />
+                        <span className="truncate">
+                          {table.location || (tableCat === 'room' ? 'In-Suite Chamber Dining' : 'Palace Dining Hall')}
+                        </span>
+                      </div>
+                    </div>
+
                     {/* Capacity & Outlet Name */}
-                    <div className="flex items-center justify-between text-[11px] py-1 opacity-90 border-t border-current/10">
+                    <div className="flex items-center justify-between text-[11px] py-1.5 opacity-90 border-t border-current/10">
                       <div className="flex items-center gap-1.5">
                         <Users className="w-3.5 h-3.5 shrink-0 opacity-80" />
                         <span className="font-semibold">{table.capacity || 4} Guests Seating</span>
                       </div>
-                      <span className="truncate max-w-[120px] opacity-75 text-[10px]">
+                      <span className="truncate max-w-[130px] opacity-75 text-[10px]">
                         {outletObj?.name || 'Rajmahal Royal Dining'}
                       </span>
                     </div>
                   </div>
 
-                  {/* Card Bottom: QR Code Link & Action Controls (EDIT & DELETE) */}
-                  <div className="pt-2.5 mt-2 border-t border-current/15 flex items-center justify-between gap-2">
-                    {/* QR Token Button */}
+                  {/* Card Bottom: QR Code Shortcut & Action Controls (EDIT & DELETE) */}
+                  <div className="pt-2 mt-2 border-t border-current/15 flex items-center justify-between gap-1.5">
+                    {/* Compact QR Token Button */}
                     <button
                       type="button"
                       onClick={() => {
@@ -1009,12 +1110,14 @@ export default function TablesReservationsPage() {
                         setQrModalTable(table);
                       }}
                       title="View digital dining QR token and URL"
-                      className="flex items-center gap-1 text-[11px] font-mono font-semibold opacity-90 hover:opacity-100 transition underline underline-offset-2 cursor-pointer truncate max-w-[170px]"
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-semibold transition cursor-pointer border shadow-2xs truncate ${
+                        isOccupied
+                          ? 'bg-white/15 hover:bg-white/25 text-white border-white/20'
+                          : 'bg-[#FAF6EF] hover:bg-white text-[#4F0809] border-[#D8AA67]/40'
+                      }`}
                     >
-                      <QrCode className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">
-                        QR: menu?qr={tableCat === 'room' ? 'room' : tableCat === 'cafe' ? 'c' : 'r'}&amp;table={table.table_number}
-                      </span>
+                      <QrCode className="w-3.5 h-3.5 shrink-0 text-[#D8AA67]" />
+                      <span className="truncate font-mono">QR: {table.table_number}</span>
                     </button>
 
                     {/* Action Buttons: EDIT & DELETE */}
@@ -1023,13 +1126,13 @@ export default function TablesReservationsPage() {
                         type="button"
                         onClick={() => openEditTable(table)}
                         title="Edit Table Details"
-                        className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition cursor-pointer border ${
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-semibold transition cursor-pointer border shadow-2xs ${
                           isOccupied
                             ? 'bg-white/15 hover:bg-white/25 text-white border-white/20'
-                            : 'bg-white hover:bg-[#F6EAE0] text-[#4F0809] border-[#E8DCD2] shadow-2xs'
+                            : 'bg-[#FAF6EF] hover:bg-white text-[#4F0809] border-[#E8DFCE]'
                         }`}
                       >
-                        <Pencil className="w-3 h-3" />
+                        <Pencil className="w-3 h-3 text-[#856B4D]" />
                         <span>Edit</span>
                       </button>
 
@@ -1037,10 +1140,10 @@ export default function TablesReservationsPage() {
                         type="button"
                         onClick={() => setTableToDelete(table)}
                         title="Remove Table"
-                        className={`p-1.5 rounded-md transition cursor-pointer border ${
+                        className={`p-1.5 rounded-xl transition cursor-pointer border shadow-2xs ${
                           isOccupied
                             ? 'bg-red-950/40 hover:bg-red-800 text-red-200 border-red-500/30'
-                            : 'bg-white hover:bg-red-50 text-red-600 border-red-200 shadow-2xs'
+                            : 'bg-[#FAF6EF] hover:bg-red-50 text-red-600 border-red-200'
                         }`}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -1281,17 +1384,17 @@ export default function TablesReservationsPage() {
                   <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                     Seating Capacity
                   </label>
-                  <select
+                  <RoyalSelect
                     value={editTableCapacity}
-                    onChange={(e) => setEditTableCapacity(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
-                  >
-                    <option value="2">2 Guests</option>
-                    <option value="4">4 Guests</option>
-                    <option value="6">6 Guests</option>
-                    <option value="8">8 Guests (Banquet)</option>
-                    <option value="12">12 Guests (Royal Diwan)</option>
-                  </select>
+                    onChange={(val) => setEditTableCapacity(val)}
+                    options={[
+                      { value: '2', label: '2 Guests' },
+                      { value: '4', label: '4 Guests' },
+                      { value: '6', label: '6 Guests' },
+                      { value: '8', label: '8 Guests (Banquet)' },
+                      { value: '12', label: '12 Guests (Royal Diwan)' },
+                    ]}
+                  />
                 </div>
               </div>
 
@@ -1299,17 +1402,15 @@ export default function TablesReservationsPage() {
                 <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                   Outlet Dining Venue
                 </label>
-                <select
+                <RoyalSelect
                   value={editTableOutletId}
-                  onChange={(e) => setEditTableOutletId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
-                >
-                  {outlets.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name} ({o.type === 'restaurant' ? 'Restaurant' : 'Café'})
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setEditTableOutletId(val)}
+                  options={outlets.map((o) => ({
+                    value: o.id,
+                    label: `${o.name} (${o.type === 'restaurant' ? 'Restaurant' : 'Café'})`,
+                    icon: o.type === 'restaurant' ? '🍽️' : '☕',
+                  }))}
+                />
               </div>
 
               <div>
@@ -1329,16 +1430,16 @@ export default function TablesReservationsPage() {
                 <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                   Current Status
                 </label>
-                <select
-                  value={editTableStatus}
-                  onChange={(e) => setEditTableStatus(e.target.value as Table['status'])}
-                  className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
-                >
-                  <option value="available">● Available (Ready for Guests)</option>
-                  <option value="occupied">● Occupied (Guests Seated)</option>
-                  <option value="reserved">● Reserved</option>
-                  <option value="cleaning">● Needs Cleaning</option>
-                </select>
+                <RoyalSelect
+                  value={editTableStatus || 'available'}
+                  onChange={(val) => setEditTableStatus(val as Table['status'])}
+                  options={[
+                    { value: 'available', label: 'Available (Ready for Guests)', dotColor: 'bg-emerald-600' },
+                    { value: 'occupied', label: 'Occupied (Guests Seated)', dotColor: 'bg-[#4F0809]' },
+                    { value: 'reserved', label: 'Reserved', dotColor: 'bg-[#B78A48]' },
+                    { value: 'cleaning', label: 'Needs Cleaning', dotColor: 'bg-amber-500' },
+                  ]}
+                />
               </div>
 
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#E8DFCE]">
@@ -1480,17 +1581,17 @@ export default function TablesReservationsPage() {
                   <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                     Seating Capacity
                   </label>
-                  <select
+                  <RoyalSelect
                     value={newTableCapacity}
-                    onChange={(e) => setNewTableCapacity(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
-                  >
-                    <option value="2">2 Guests</option>
-                    <option value="4">4 Guests (Standard)</option>
-                    <option value="6">6 Guests</option>
-                    <option value="8">8 Guests (Banquet)</option>
-                    <option value="12">12 Guests (Royal Diwan)</option>
-                  </select>
+                    onChange={(val) => setNewTableCapacity(val)}
+                    options={[
+                      { value: '2', label: '2 Guests' },
+                      { value: '4', label: '4 Guests (Standard)' },
+                      { value: '6', label: '6 Guests' },
+                      { value: '8', label: '8 Guests (Banquet)' },
+                      { value: '12', label: '12 Guests (Royal Diwan)' },
+                    ]}
+                  />
                 </div>
               </div>
 
@@ -1498,17 +1599,15 @@ export default function TablesReservationsPage() {
                 <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                   Outlet Dining Venue *
                 </label>
-                <select
+                <RoyalSelect
                   value={newTableOutletId}
-                  onChange={(e) => setNewTableOutletId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
-                >
-                  {outlets.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name} ({o.type === 'restaurant' ? 'Restaurant' : 'Café'})
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setNewTableOutletId(val)}
+                  options={outlets.map((o) => ({
+                    value: o.id,
+                    label: `${o.name} (${o.type === 'restaurant' ? 'Restaurant' : 'Café'})`,
+                    icon: o.type === 'restaurant' ? '🍽️' : '☕',
+                  }))}
+                />
               </div>
 
               <div>
@@ -1528,16 +1627,16 @@ export default function TablesReservationsPage() {
                 <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                   Initial Status
                 </label>
-                <select
-                  value={newTableStatus}
-                  onChange={(e) => setNewTableStatus(e.target.value as Table['status'])}
-                  className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
-                >
-                  <option value="available">● Available (Ready for Guests)</option>
-                  <option value="occupied">● Occupied (Seated)</option>
-                  <option value="reserved">● Reserved</option>
-                  <option value="cleaning">● Needs Cleaning</option>
-                </select>
+                <RoyalSelect
+                  value={newTableStatus || 'available'}
+                  onChange={(val) => setNewTableStatus(val as Table['status'])}
+                  options={[
+                    { value: 'available', label: 'Available (Ready for Guests)', dotColor: 'bg-emerald-600' },
+                    { value: 'occupied', label: 'Occupied (Seated)', dotColor: 'bg-[#4F0809]' },
+                    { value: 'reserved', label: 'Reserved', dotColor: 'bg-[#B78A48]' },
+                    { value: 'cleaning', label: 'Needs Cleaning', dotColor: 'bg-amber-500' },
+                  ]}
+                />
               </div>
 
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#E8DFCE]">
@@ -1726,77 +1825,63 @@ export default function TablesReservationsPage() {
                   <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                     Outlet Dining Venue
                   </label>
-                  <select
+                  <RoyalSelect
                     value={formOutletId}
-                    onChange={(e) => setFormOutletId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
-                  >
-                    {outlets.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setFormOutletId(val)}
+                    options={outlets.map((o) => ({
+                      value: o.id,
+                      label: `${o.name} (${o.type === 'restaurant' ? 'Restaurant' : 'Café'})`,
+                      icon: o.type === 'restaurant' ? '🍽️' : '☕',
+                    }))}
+                  />
                 </div>
                 <div>
                   <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
                     Assigned Table
                   </label>
-                  <select
+                  <RoyalSelect
                     value={formTableNumber}
-                    onChange={(e) => setFormTableNumber(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-bold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
-                  >
-                    {tables
+                    onChange={(val) => setFormTableNumber(val)}
+                    options={tables
                       .filter((t) => !formOutletId || t.outlet_id === formOutletId || t.table_number.toLowerCase().startsWith('room'))
-                      .map((t) => (
-                        <option key={t.id} value={t.table_number}>
-                          {t.table_number} ({t.location || 'Area'} - {t.capacity} seats)
-                        </option>
-                      ))}
-                  </select>
+                      .map((t) => ({
+                        value: t.table_number,
+                        label: `${t.table_number} (${t.capacity} seats - ${t.location || 'Area'})`,
+                        icon: t.table_number.toLowerCase().startsWith('room') ? '🛏️' : '🍽️',
+                      }))}
+                  />
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">Date</label>
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
+                    Reservation Date *
+                  </label>
                   <input
                     type="date"
                     required
                     value={formDate}
                     onChange={(e) => setFormDate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] bg-[#F5ECDC] focus:bg-white text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none text-[#4F0809]"
+                    className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] bg-[#F5ECDC] focus:bg-white text-xs focus:ring-1 focus:ring-[#4F0809] focus:outline-none text-[#4F0809] font-bold"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">Time</label>
-                  <select
-                    value={formTime}
-                    onChange={(e) => setFormTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
-                  >
-                    {timeOptions.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">Guests</label>
-                  <select
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1">
+                    Guests (Party Size)
+                  </label>
+                  <RoyalSelect
                     value={formPartySize}
-                    onChange={(e) => setFormPartySize(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-[#E8DFCE] text-xs bg-[#F5ECDC] focus:bg-white text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
-                  >
-                    <option value="2">2 Guests</option>
-                    <option value="4">4 Guests</option>
-                    <option value="6">6 Guests</option>
-                    <option value="8">8 Guests</option>
-                    <option value="12">12 Guests</option>
-                    <option value="16">16 Guests</option>
-                  </select>
+                    onChange={(val) => setFormPartySize(val)}
+                    options={[
+                      { value: '2', label: '2 Guests' },
+                      { value: '4', label: '4 Guests (Standard)' },
+                      { value: '6', label: '6 Guests' },
+                      { value: '8', label: '8 Guests (Banquet)' },
+                      { value: '12', label: '12 Guests (Royal Diwan)' },
+                      { value: '16', label: '16 Guests (Large Party)' },
+                    ]}
+                  />
                 </div>
               </div>
 
