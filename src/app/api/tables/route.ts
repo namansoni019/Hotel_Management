@@ -156,16 +156,61 @@ export async function PATCH(request: Request) {
     }
 
     // Update Table fields (table_number, outlet_id, capacity, location, status, is_active)
-    const { id, status, capacity, location, table_number, outlet_id, is_active } = body;
+    let { id, status, capacity, location, table_number, outlet_id, is_active } = body;
+
+    // Resolve table ID by table_number if ID was not directly provided
+    if (!id && table_number) {
+      const cleanNum = String(table_number).replace(/^table\s*/i, '').trim().toUpperCase();
+      const allTables = dataRepository.getTables();
+      const existing = allTables.find(
+        (t) =>
+          t.table_number.toUpperCase() === cleanNum ||
+          t.table_number.toUpperCase() === `T-${cleanNum}` ||
+          `Table ${t.table_number}`.toUpperCase() === String(table_number).trim().toUpperCase()
+      );
+      if (existing) {
+        id = existing.id;
+      } else {
+        // Auto-create table in memory and Firestore if new (e.g. T-42 scanned)
+        const createdId = `tab-${Date.now()}`;
+        const targetOutlet = outlet_id || 'e0000000-0000-0000-0000-000000000001';
+        const created = dataRepository.addTable({
+          outlet_id: targetOutlet,
+          table_number: cleanNum,
+          capacity: Number(capacity) || 4,
+          location: location || 'Dining Hall',
+          status: status || 'reserved',
+          is_active: true,
+        });
+        created.id = createdId;
+        id = createdId;
+
+        try {
+          await setDoc(doc(db, 'tables', createdId), {
+            id: createdId,
+            outlet_id: targetOutlet,
+            table_number: cleanNum,
+            capacity: created.capacity,
+            location: created.location,
+            status: status || 'reserved',
+            is_active: true,
+            created_at: serverTimestamp(),
+          });
+        } catch {
+          // Ignored
+        }
+      }
+    }
+
     if (!id) {
-      return NextResponse.json({ success: false, error: 'Table id is required' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Table id or table_number is required' }, { status: 400 });
     }
 
     const patchData: Partial<any> = {};
     if (status !== undefined) patchData.status = status;
     if (capacity !== undefined) patchData.capacity = Number(capacity);
     if (location !== undefined) patchData.location = location;
-    if (table_number !== undefined) patchData.table_number = table_number.trim().toUpperCase();
+    if (table_number !== undefined) patchData.table_number = String(table_number).replace(/^table\s*/i, '').trim().toUpperCase();
     if (outlet_id !== undefined) patchData.outlet_id = outlet_id;
     if (is_active !== undefined) patchData.is_active = Boolean(is_active);
 
@@ -173,10 +218,12 @@ export async function PATCH(request: Request) {
 
     try {
       const dbPatch: any = {};
+      if (status !== undefined) dbPatch.status = status;
       if (capacity !== undefined) dbPatch.capacity = Number(capacity);
-      if (table_number !== undefined) dbPatch.table_number = table_number.trim().toUpperCase();
+      if (table_number !== undefined) dbPatch.table_number = String(table_number).replace(/^table\s*/i, '').trim().toUpperCase();
       if (outlet_id !== undefined) dbPatch.outlet_id = outlet_id;
       if (is_active !== undefined) dbPatch.is_active = Boolean(is_active);
+      dbPatch.updated_at = serverTimestamp();
 
       if (Object.keys(dbPatch).length > 0) {
         await updateDoc(doc(db, 'tables', id), dbPatch);

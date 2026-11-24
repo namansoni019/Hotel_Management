@@ -52,6 +52,8 @@ export default function QRCodeManagementPage() {
   // Add QR Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newTableNumber, setNewTableNumber] = useState('');
+  const [newVenue, setNewVenue] = useState<'restaurant' | 'cafe'>('restaurant');
+  const [newTargetType, setNewTargetType] = useState<'table' | 'room' | 'hall'>('table');
   const [newOutlet, setNewOutlet] = useState('The Grand Darbar Restaurant');
   const [newCapacity, setNewCapacity] = useState('4');
   const [newLocation, setNewLocation] = useState('Courtyard Royal');
@@ -192,7 +194,7 @@ export default function QRCodeManagementPage() {
   const handleCreateQR = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTableNumber.trim()) {
-      showToast('error', 'Please enter a valid table number (e.g. T-01).');
+      showToast('error', 'Please enter a valid identifier (e.g. T-42).');
       return;
     }
 
@@ -202,15 +204,21 @@ export default function QRCodeManagementPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          identifier: newTableNumber.trim(),
           table_number: newTableNumber.trim(),
-          outlet_id: newOutlet.includes('Café') ? 'out-cafe' : 'out-restaurant',
+          venue: newVenue,
+          target_type: newTargetType,
+          outlet_id: newVenue === 'cafe' ? 'out-cafe' : 'out-restaurant',
           capacity: Number(newCapacity) || 4,
-          location: `${newOutlet} (${newLocation})`,
+          location: `${newVenue === 'cafe' ? 'Café Courtyard' : 'Grand Darbar Restaurant'} (${newLocation})`,
         }),
       });
 
       if (res.ok) {
-        showToast('success', `Successfully created QR token for Table ${newTableNumber.trim()}`);
+        showToast(
+          'success',
+          `Created QR for ${newTargetType.toUpperCase()} ${newTableNumber.trim()} (${newVenue === 'cafe' ? 'Café' : 'Restaurant'})`
+        );
         setNewTableNumber('');
         setIsAddModalOpen(false);
         await loadData();
@@ -669,46 +677,107 @@ export default function QRCodeManagementPage() {
                   className="text-xl font-bold text-[#4F0809]"
                   style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
                 >
-                  Generate New Table QR
+                  Generate Palace Dining QR Token
                 </h3>
                 <p className="text-xs text-[#81736D]">
-                  Create a live dining table with its scannable standee QR
+                  Generates scannable QR that opens menu and reserves the table in database
                 </p>
               </div>
             </div>
 
             <form onSubmit={handleCreateQR} className="space-y-3.5">
+              {/* Destination Type & Venue Selectors */}
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-[#4F0809]">
+                  Service Channel / Destination Type
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'table', label: 'Table (Dine-In)', tag: 'table=' },
+                    { id: 'room', label: 'In-Room Suite', tag: 'room=' },
+                    { id: 'hall', label: 'Banquet Hall', tag: 'hall=' },
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setNewTargetType(t.id as any)}
+                      className={`p-2 rounded-xl text-left border text-xs font-semibold transition cursor-pointer flex flex-col justify-between ${
+                        newTargetType === t.id
+                          ? 'border-[#4F0809] bg-[#4F0809] text-white'
+                          : 'border-[#E8DCD2] bg-[#FBF6EF] text-[#4F0809] hover:bg-[#F6EAE0]'
+                      }`}
+                    >
+                      <span className="leading-tight">{t.label}</span>
+                      <span className={`text-[10px] font-mono mt-0.5 ${newTargetType === t.id ? 'text-[#D8AA67]' : 'text-[#81736D]'}`}>
+                        {t.tag}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Outlet Venue Selector */}
+              <div>
+                <label className="block text-xs font-semibold text-[#4F0809] mb-1.5">
+                  Palace Menu &amp; Venue
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'restaurant', label: 'Royal Restaurant', code: 'qr=r' },
+                    { id: 'cafe', label: 'Courtyard Café', code: 'qr=c' },
+                  ].map((v) => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => setNewVenue(v.id as any)}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex items-center justify-between ${
+                        newVenue === v.id
+                          ? 'border-[#4F0809] bg-[#4F0809] text-white'
+                          : 'border-[#E8DCD2] bg-[#FBF6EF] text-[#4F0809] hover:bg-[#F6EAE0]'
+                      }`}
+                    >
+                      <div>
+                        <div className="text-xs font-bold leading-tight">{v.label}</div>
+                        <div className={`text-[10px] font-mono ${newVenue === v.id ? 'text-[#D8AA67]' : 'text-[#81736D]'}`}>
+                          {v.code}
+                        </div>
+                      </div>
+                      {newVenue === v.id && <Check className="w-4 h-4 text-[#D8AA67]" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Identifier */}
               <div>
                 <label className="block text-xs font-semibold text-[#4F0809] mb-1">
-                  Table Identifier / Number *
+                  {newTargetType === 'table' ? 'Table Number' : newTargetType === 'room' ? 'Room / Suite Number' : 'Hall Name / ID'} *
                 </label>
                 <input
                   type="text"
                   required
                   value={newTableNumber}
                   onChange={(e) => setNewTableNumber(e.target.value)}
-                  placeholder="e.g. T-01, VIP-1, C-02"
-                  className="w-full px-3 py-2 text-xs bg-[#FBF6EF] border border-[#E8DCD2] rounded-xl text-[#302421] focus:outline-none focus:border-[#4F0809]"
+                  placeholder={newTargetType === 'table' ? 'e.g. T-42, T-01, VIP-1' : newTargetType === 'room' ? 'e.g. 204, Suite-A' : 'e.g. Durbar Hall'}
+                  className="w-full px-3 py-2 text-xs bg-[#FBF6EF] border border-[#E8DCD2] rounded-xl text-[#302421] focus:outline-none focus:border-[#4F0809] font-medium"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-[#4F0809] mb-1">
-                    Palace Outlet
-                  </label>
-                  <select
-                    value={newOutlet}
-                    onChange={(e) => setNewOutlet(e.target.value)}
-                    className="w-full px-3 py-2 text-xs bg-[#FBF6EF] border border-[#E8DCD2] rounded-xl text-[#302421] focus:outline-none focus:border-[#4F0809]"
-                  >
-                    <option value="The Grand Darbar Restaurant">The Grand Darbar Restaurant</option>
-                    <option value="Café Jharokha">Café Jharokha</option>
-                    <option value="Palace Poolside">Palace Poolside</option>
-                    <option value="Royal Terrace & Bar">Royal Terrace &amp; Bar</option>
-                  </select>
+              {/* Live Target URL Preview Box */}
+              <div className="p-2.5 rounded-xl bg-[#F5ECDC]/90 border border-[#D8AA67]/60 text-xs">
+                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-[#9C7A45] mb-1">
+                  <span>Generated Target URL Preview</span>
+                  <span className="text-emerald-800 bg-emerald-100/90 px-1.5 py-0.2 rounded font-sans font-bold">Auto-Reserves Table</span>
                 </div>
+                <div className="font-mono text-[11px] text-[#4F0809] break-all font-semibold">
+                  /menu?qr={newVenue === 'cafe' ? 'c' : 'r'}&amp;{newTargetType}={newTableNumber.trim() || 'T-42'}
+                </div>
+                <div className="text-[10px] text-[#81736D] mt-1 font-mono">
+                  Also compatible with: menu?qr\{newVenue === 'cafe' ? 'c' : 'r'}&amp;{newTargetType}={newTableNumber.trim() || 'T-42'}
+                </div>
+              </div>
 
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-[#4F0809] mb-1">
                     Seating Capacity
@@ -725,19 +794,19 @@ export default function QRCodeManagementPage() {
                     <option value="12">12 Guests (Royal Banquet)</option>
                   </select>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-[#4F0809] mb-1">
-                  Table Location / Ambience
-                </label>
-                <input
-                  type="text"
-                  value={newLocation}
-                  onChange={(e) => setNewLocation(e.target.value)}
-                  placeholder="e.g. Courtyard Royal, Window Garden, Altar Center"
-                  className="w-full px-3 py-2 text-xs bg-[#FBF6EF] border border-[#E8DCD2] rounded-xl text-[#302421] focus:outline-none focus:border-[#4F0809]"
-                />
+                <div>
+                  <label className="block text-xs font-semibold text-[#4F0809] mb-1">
+                    Location / Zone
+                  </label>
+                  <input
+                    type="text"
+                    value={newLocation}
+                    onChange={(e) => setNewLocation(e.target.value)}
+                    placeholder="e.g. Courtyard Royal, Window Garden"
+                    className="w-full px-3 py-2 text-xs bg-[#FBF6EF] border border-[#E8DCD2] rounded-xl text-[#302421] focus:outline-none focus:border-[#4F0809]"
+                  />
+                </div>
               </div>
 
               <div className="pt-2 flex items-center justify-end gap-2">

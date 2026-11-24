@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { formatMoney } from '@/lib/utils/money';
 import {
   INITIAL_OUTLETS,
@@ -45,14 +45,27 @@ interface CartItemEntry {
   notes?: string;
 }
 
-export default function MenuPage() {
+interface QRSession {
+  venue: VenueType;
+  destType: 'table' | 'room' | 'hall';
+  destVal: string;
+  label: string;
+  isReserved: boolean;
+}
+
+function MenuContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // ── Customer Flow State ──
   // Step 1: Ordering Method
   const [orderingMethod, setOrderingMethod] = useState<OrderingMethod | null>(null);
   // Step 2: Venue Selection
   const [selectedVenue, setSelectedVenue] = useState<VenueType>('restaurant');
+
+  // QR Session state from URL scan (e.g. menu?qr\r&table=T-42 or menu?qr\c&table=T-42)
+  const [qrSession, setQrSession] = useState<QRSession | null>(null);
+  const reservationAttemptedRef = useRef(false);
 
   // Cart State (preserved even when changing method or venue)
   const [cart, setCart] = useState<{ [id: string]: CartItemEntry }>({});
@@ -113,6 +126,109 @@ export default function MenuPage() {
       isMounted = false;
     };
   }, []);
+
+  // ── Parse QR Parameters from URL on mount & Auto-reserve Table ──
+  useEffect(() => {
+    if (reservationAttemptedRef.current) return;
+
+    let fullSearch = '';
+    if (typeof window !== 'undefined') {
+      fullSearch = window.location.search || window.location.href.split('?')[1] || '';
+    }
+    const decoded = decodeURIComponent(fullSearch || (searchParams ? searchParams.toString() : ''));
+
+    if (!decoded) return;
+
+    // 1. Detect Venue: qr\r or qr/r or qr=r or qr=restaurant vs qr\c or qr/c or qr=c or qr=cafe
+    let detectedVenue: VenueType | null = null;
+    if (
+      /qr[=\\/:_]?(r|restaurant)\b/i.test(decoded) ||
+      searchParams?.get('qr') === 'r' ||
+      searchParams?.get('qr') === 'restaurant'
+    ) {
+      detectedVenue = 'restaurant';
+    } else if (
+      /qr[=\\/:_]?(c|cafe)\b/i.test(decoded) ||
+      searchParams?.get('qr') === 'c' ||
+      searchParams?.get('qr') === 'cafe'
+    ) {
+      detectedVenue = 'cafe';
+    }
+
+    // 2. Detect Destination: table=..., room=..., hall=... (handles &table=T-42, \table=T-42, etc.)
+    let detectedDestType: 'table' | 'room' | 'hall' | null = null;
+    let detectedDestVal: string | null = null;
+
+    const tableMatch = decoded.match(/(?:table|tbl)[=\\/:]([^&?#\s]+)/i);
+    const roomMatch = decoded.match(/(?:room|suite)[=\\/:]([^&?#\s]+)/i);
+    const hallMatch = decoded.match(/(?:hall|banquet)[=\\/:]([^&?#\s]+)/i);
+
+    if (tableMatch) {
+      detectedDestType = 'table';
+      detectedDestVal = tableMatch[1].trim();
+    } else if (searchParams?.get('table')) {
+      detectedDestType = 'table';
+      detectedDestVal = searchParams.get('table')!.trim();
+    } else if (roomMatch) {
+      detectedDestType = 'room';
+      detectedDestVal = roomMatch[1].trim();
+    } else if (searchParams?.get('room')) {
+      detectedDestType = 'room';
+      detectedDestVal = searchParams.get('room')!.trim();
+    } else if (hallMatch) {
+      detectedDestType = 'hall';
+      detectedDestVal = hallMatch[1].trim();
+    } else if (searchParams?.get('hall')) {
+      detectedDestType = 'hall';
+      detectedDestVal = searchParams.get('hall')!.trim();
+    }
+
+    if (detectedVenue || detectedDestVal) {
+      reservationAttemptedRef.current = true;
+      const finalVenue: VenueType = detectedVenue || 'restaurant';
+      setSelectedVenue(finalVenue);
+      setOrderingMethod('dine_in');
+
+      let formattedLabel = '';
+      if (detectedDestType === 'table' || (!detectedDestType && detectedDestVal)) {
+        detectedDestType = 'table';
+        const cleanTbl = (detectedDestVal || 'T-42').replace(/^table\s*/i, '');
+        formattedLabel = `Table ${cleanTbl}`;
+        setTableOrRoom(formattedLabel);
+
+        // Auto-reserve the table in the database
+        fetch('/api/tables', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            table_number: cleanTbl,
+            status: 'reserved',
+          }),
+        })
+          .then((r) => r.json())
+          .then((d) => {
+            console.log('[QR Scan] Table auto-reserved in database:', d);
+          })
+          .catch((err) => console.error('[QR Scan] Table reservation error:', err));
+      } else if (detectedDestType === 'room') {
+        const cleanRoom = (detectedDestVal || 'Suite').replace(/^(room|suite)\s*/i, '');
+        formattedLabel = `Suite Room ${cleanRoom}`;
+        setTableOrRoom(formattedLabel);
+      } else if (detectedDestType === 'hall') {
+        const cleanHall = (detectedDestVal || 'Durbar').replace(/^(hall|banquet)\s*/i, '');
+        formattedLabel = `Banquet Hall ${cleanHall}`;
+        setTableOrRoom(formattedLabel);
+      }
+
+      setQrSession({
+        venue: finalVenue,
+        destType: detectedDestType || 'table',
+        destVal: detectedDestVal || '',
+        label: formattedLabel,
+        isReserved: detectedDestType === 'table',
+      });
+    }
+  }, [searchParams]);
 
   // Outlets
   const restaurantOutlet =
@@ -517,6 +633,44 @@ export default function MenuPage() {
       ═══════════════════════════════════════════════════════════════ */}
       {orderingMethod && (
         <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24">
+          {/* ── ROYAL ACTIVE QR SESSION BANNER (WHEN SCANNED FROM QR) ── */}
+          {qrSession && (
+            <div className="mb-4 sm:mb-5 p-3.5 sm:p-5 rounded-2xl bg-gradient-to-r from-[#4F0809] via-[#6B1518] to-[#4F0809] text-[#FFF8EB] border-2 border-[#D8AA67]/60 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in">
+              <div className="flex items-center space-x-3 sm:space-x-4 min-w-0">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-[#D8AA67]/20 border border-[#D8AA67]/50 flex items-center justify-center shrink-0 text-[#D8AA67] shadow-inner">
+                  <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 animate-pulse" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                    <span className="text-[10px] font-bold text-[#D8AA67] tracking-[0.2em] uppercase">
+                      Palace QR Session Active
+                    </span>
+                    {qrSession.isReserved && (
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 text-[10px] font-bold flex items-center gap-1.5 shadow-xs">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                        Table Reserved
+                      </span>
+                    )}
+                  </div>
+                  <h2
+                    className="text-lg sm:text-2xl font-bold text-[#FFF8EB] leading-tight truncate"
+                    style={{ fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)" }}
+                  >
+                    {qrSession.label} • {qrSession.venue === 'cafe' ? 'The Palace Courtyard Café' : 'Rajmahal Royal Dining'}
+                  </h2>
+                  <p className="text-[11px] sm:text-xs text-[#D8AA67]/90 font-normal mt-0.5">
+                    Your table is reserved and active. Dishes ordered will be served directly to your seat.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                <span className="text-xs px-3.5 py-1.5 rounded-xl bg-white/10 border border-[#D8AA67]/40 text-[#FFF8EB] font-bold tracking-wide">
+                  {qrSession.label}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Active Order Controls + Venue Dropdown Header */}
           <div className="p-3.5 sm:p-6 rounded-t-3xl rounded-b-2xl bg-[#FDF8EE] mb-5 sm:mb-6 flex flex-col md:flex-row md:items-center justify-between gap-3.5 sm:gap-4 border border-[#E8DFCE]/60">
             {/* Left: Active Venue Info */}
@@ -1350,16 +1504,23 @@ export default function MenuPage() {
                 {/* Conditional Fields based on Ordering Method */}
                 {orderingMethod === 'dine_in' && (
                   <div>
-                    <label className="block text-[10px] uppercase tracking-[0.14em] font-bold text-[#856B4D] mb-1.5">
-                      Table Number or Room Suite Number *
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-[10px] uppercase tracking-[0.14em] font-bold text-[#856B4D]">
+                        Table Number or Room Suite Number *
+                      </label>
+                      {qrSession && (
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-700" /> Auto-filled from QR
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="text"
                       required
                       placeholder="e.g. Table T-101 / Suite 204"
                       value={tableOrRoom}
                       onChange={(e) => setTableOrRoom(e.target.value)}
-                      className="w-full h-11 px-3.5 text-xs sm:text-sm rounded-xl bg-[#F5ECDC] focus:bg-[#EFE2CC] focus:outline-none text-[#4F0809] placeholder-[#856B4D]/55"
+                      className="w-full h-11 px-3.5 text-xs sm:text-sm rounded-xl bg-[#F5ECDC] focus:bg-[#EFE2CC] focus:outline-none text-[#4F0809] placeholder-[#856B4D]/55 font-medium"
                     />
                   </div>
                 )}
@@ -1475,5 +1636,24 @@ export default function MenuPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function MenuPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#FFF7E8] flex items-center justify-center text-[#4F0809]">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-2 border-[#4F0809] border-t-transparent rounded-full animate-spin" />
+            <span className="text-xs uppercase tracking-widest text-[#856B4D] font-bold">
+              Loading Royal Palace Menu...
+            </span>
+          </div>
+        </div>
+      }
+    >
+      <MenuContent />
+    </Suspense>
   );
 }

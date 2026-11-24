@@ -45,6 +45,9 @@ export async function GET() {
           const token = qrObj?.token || `table-${cleanNum}`;
           const outlet =
             outlets.find((o) => o.id === t.outlet_id || OUTLET_MAPPINGS[o.type] === t.outlet_id) || outlets[0];
+          const isCafeOutlet = t.outlet_id === 'e0000000-0000-0000-0000-000000000002' || String(t.outlet_id).includes('cafe') || outlet?.type === 'cafe';
+          const venueCode = isCafeOutlet ? 'c' : 'r';
+          const targetUrl = `/menu?qr=${venueCode}&table=${t.table_number}`;
 
           return {
             id: qrObj?.id || `qr-${t.id}`,
@@ -54,10 +57,10 @@ export async function GET() {
             location: `${outlet?.name || 'Palace Dining'} (Area)`,
             outletName: outlet?.name || 'Rajmahal Royal Dining',
             token,
-            targetUrl: `/qr/${token}`,
+            targetUrl,
             isActive: qrObj?.is_active ?? t.is_active ?? true,
             capacity: t.capacity || 4,
-            tableStatus: 'available',
+            tableStatus: t.status || 'available',
           };
         });
 
@@ -82,6 +85,10 @@ export async function GET() {
       const qrObj = memoryQRs.find((q) => q.table_id === table.id);
       const token = qrObj?.token || table.code || `table-${cleanNum}`;
 
+      const isCafeOutlet = table.outlet_id === 'e0000000-0000-0000-0000-000000000002' || String(table.outlet_id).includes('cafe') || outlet?.type === 'cafe';
+      const venueCode = isCafeOutlet ? 'c' : 'r';
+      const targetUrl = `/menu?qr=${venueCode}&table=${table.table_number}`;
+
       return {
         id: qrObj?.id || `qr-${table.id}`,
         table_id: table.id,
@@ -90,7 +97,7 @@ export async function GET() {
         location: `${outlet?.name || 'Palace Dining'} (${table.location || 'Dining Area'})`,
         outletName: outlet?.name || 'Rajmahal Royal Dining',
         token,
-        targetUrl: `/qr/${token}`,
+        targetUrl,
         isActive: qrObj?.is_active ?? table.is_active ?? true,
         capacity: table.capacity || 4,
         tableStatus: table.status || 'available',
@@ -112,19 +119,32 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { table_number, outlet_id, capacity, location } = body;
+    const { table_number, identifier, venue, target_type, outlet_id, capacity, location } = body;
+    const rawNum = identifier || table_number;
 
-    if (!table_number) {
-      return NextResponse.json({ success: false, error: 'Table number is required' }, { status: 400 });
+    if (!rawNum) {
+      return NextResponse.json({ success: false, error: 'Identifier / Number is required (e.g. T-42)' }, { status: 400 });
     }
 
-    const cleanNum = table_number.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    const tokenStr = `table-${cleanNum}`;
-    const targetOutletUUID =
-      OUTLET_MAPPINGS[outlet_id] ||
-      (outlet_id?.includes('cafe') || outlet_id?.includes('Café')
-        ? 'e0000000-0000-0000-0000-000000000002'
-        : 'e0000000-0000-0000-0000-000000000001');
+    const cleanNum = String(rawNum).trim().toUpperCase().replace(/^TABLE\s*/i, '');
+    const cleanToken = cleanNum.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const isCafe = venue === 'cafe' || outlet_id === 'out-cafe' || String(outlet_id).includes('cafe') || String(location).toLowerCase().includes('caf');
+    const venueCode = isCafe ? 'c' : 'r';
+    const type = target_type || 'table';
+
+    let targetUrl = `/menu?qr=${venueCode}&table=${cleanNum}`;
+    let tokenStr = `table-${cleanToken}`;
+    if (type === 'room') {
+      targetUrl = `/menu?qr=${venueCode}&room=${cleanNum}`;
+      tokenStr = `room-${cleanToken}`;
+    } else if (type === 'hall') {
+      targetUrl = `/menu?qr=${venueCode}&hall=${cleanNum}`;
+      tokenStr = `hall-${cleanToken}`;
+    }
+
+    const targetOutletUUID = isCafe
+      ? 'e0000000-0000-0000-0000-000000000002'
+      : 'e0000000-0000-0000-0000-000000000001';
 
     const createdTableId = `tab-${Date.now()}`;
 
@@ -132,9 +152,10 @@ export async function POST(request: Request) {
       await setDoc(doc(db, 'tables', createdTableId), {
         id: createdTableId,
         outlet_id: targetOutletUUID,
-        table_number: table_number.trim().toUpperCase(),
+        table_number: cleanNum,
         capacity: Number(capacity) || 4,
-        location: location || 'Dining Area',
+        location: location || (isCafe ? 'Heritage Café' : 'Grand Darbar'),
+        status: 'available',
         is_active: true,
         created_at: serverTimestamp(),
       });
@@ -143,6 +164,7 @@ export async function POST(request: Request) {
         id: `qr-${createdTableId}`,
         table_id: createdTableId,
         token: tokenStr,
+        target_url: targetUrl,
         is_active: true,
         created_at: serverTimestamp(),
       });
@@ -152,9 +174,9 @@ export async function POST(request: Request) {
 
     const newTable = dataRepository.addTable({
       outlet_id: targetOutletUUID,
-      table_number: table_number.trim().toUpperCase(),
+      table_number: cleanNum,
       capacity: Number(capacity) || 4,
-      location: location || 'Dining Area',
+      location: location || (isCafe ? 'Heritage Café' : 'Grand Darbar'),
       status: 'available',
       is_active: true,
     });
@@ -165,6 +187,7 @@ export async function POST(request: Request) {
       success: true,
       table: newTable,
       token: tokenStr,
+      targetUrl,
     });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

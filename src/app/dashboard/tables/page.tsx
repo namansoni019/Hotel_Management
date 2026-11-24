@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import QRCode from 'qrcode';
 import {
   Armchair,
   Search,
@@ -47,6 +48,8 @@ export default function TablesReservationsPage() {
   // QR Modal
   const [qrModalTable, setQrModalTable] = useState<Table | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [qrVenue, setQrVenue] = useState<'restaurant' | 'cafe'>('restaurant');
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
 
   // In-app Delete Confirmation Modal (Reliable, no browser alert/confirm blocks)
   const [tableToDelete, setTableToDelete] = useState<Table | null>(null);
@@ -484,8 +487,28 @@ export default function TablesReservationsPage() {
     document.body.removeChild(link);
   };
 
-  const copyQRLink = (token: string) => {
-    const url = `${window.location.origin}/qr/${token}`;
+  // Generate scannable QR Code whenever table or venue changes
+  useEffect(() => {
+    if (!qrModalTable) {
+      setQrDataUrl('');
+      return;
+    }
+    const venueCode = qrVenue === 'cafe' ? 'c' : 'r';
+    const targetPath = `/menu?qr=${venueCode}&table=${qrModalTable.table_number}`;
+    const fullUrl = typeof window !== 'undefined' ? `${window.location.origin}${targetPath}` : targetPath;
+
+    QRCode.toDataURL(fullUrl, {
+      width: 300,
+      margin: 2,
+      color: { dark: '#4F0809', light: '#FFFFFF' },
+    })
+      .then((url) => setQrDataUrl(url))
+      .catch(() => setQrDataUrl(''));
+  }, [qrModalTable, qrVenue]);
+
+  const copyQRLink = (tableNumber: string) => {
+    const venueCode = qrVenue === 'cafe' ? 'c' : 'r';
+    const url = `${window.location.origin}/menu?qr=${venueCode}&table=${tableNumber}`;
     navigator.clipboard.writeText(url);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
@@ -1539,33 +1562,66 @@ export default function TablesReservationsPage() {
             >
               Table {qrModalTable.table_number} Digital Token
             </h3>
-            <p className="text-xs text-[#81736D] mt-1 mb-4">
-              Guests scan this token at the table to browse royal menu and order direct
+            <p className="text-xs text-[#81736D] mt-0.5 mb-3">
+              Scan with mobile to auto-reserve Table {qrModalTable.table_number} &amp; launch palace menu
             </p>
 
-            {/* QR Code Container */}
-            <div className="p-4 bg-[#FBF6EF] rounded-xl border border-[#E8DCD2] inline-block mx-auto mb-4">
-              <div className="w-40 h-40 bg-white border border-[#E8DCD2] rounded-lg p-2 flex flex-col items-center justify-center mx-auto shadow-inner">
-                <QrCode className="w-28 h-28 text-[#4F0809]" />
-                <span className="text-[10px] font-mono font-bold text-[#4F0809] mt-1">
-                  {qrModalTable.code || `table-${qrModalTable.table_number.toLowerCase()}`}
-                </span>
+            {/* Venue Switcher for QR Target */}
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              {[
+                { id: 'restaurant', label: 'Royal Restaurant', code: 'qr=r' },
+                { id: 'cafe', label: 'Courtyard Café', code: 'qr=c' },
+              ].map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => setQrVenue(v.id as any)}
+                  className={`p-1.5 rounded-xl border text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                    qrVenue === v.id
+                      ? 'border-[#4F0809] bg-[#4F0809] text-white shadow-xs'
+                      : 'border-[#E8DCD2] bg-[#FBF6EF] text-[#4F0809] hover:bg-[#F6EAE0]'
+                  }`}
+                >
+                  <span>{v.label}</span>
+                  <span className={`text-[10px] font-mono ${qrVenue === v.id ? 'text-[#D8AA67]' : 'text-[#81736D]'}`}>
+                    ({v.code})
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* QR Code Container with Real Generated Scannable QR */}
+            <div className="p-3 bg-[#FBF6EF] rounded-xl border border-[#E8DCD2] inline-block mx-auto mb-3">
+              <div className="w-44 h-44 bg-white border border-[#E8DCD2] rounded-lg p-2 flex flex-col items-center justify-center mx-auto shadow-inner">
+                {qrDataUrl ? (
+                  <img
+                    src={qrDataUrl}
+                    alt={`Scannable QR for Table ${qrModalTable.table_number}`}
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <>
+                    <QrCode className="w-28 h-28 text-[#4F0809]" />
+                    <span className="text-[10px] font-mono font-bold text-[#4F0809] mt-1">
+                      Table {qrModalTable.table_number}
+                    </span>
+                  </>
+                )}
+              </div>
+              <div className="mt-1.5 text-[10px] font-bold text-emerald-800 flex items-center justify-center gap-1">
+                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Auto-Reserves on Scan
               </div>
             </div>
 
             {/* URL Display & Copy */}
-            <div className="flex items-center gap-1.5 p-2 bg-[#FBF6EF] border border-[#E8DCD2] rounded-lg text-xs font-mono text-[#4F0809] mb-4">
-              <span className="truncate flex-1 text-left text-[11px]">
-                /qr/{qrModalTable.code || `table-${qrModalTable.table_number.toLowerCase()}`}
+            <div className="flex items-center gap-1.5 p-2 bg-[#FBF6EF] border border-[#E8DCD2] rounded-lg text-xs font-mono text-[#4F0809] mb-3">
+              <span className="truncate flex-1 text-left text-[11px] font-semibold">
+                /menu?qr={qrVenue === 'cafe' ? 'c' : 'r'}&amp;table={qrModalTable.table_number}
               </span>
               <button
                 type="button"
-                onClick={() =>
-                  copyQRLink(
-                    qrModalTable.code || `table-${qrModalTable.table_number.toLowerCase()}`
-                  )
-                }
-                className="px-2 py-1 rounded bg-white border border-[#E8DCD2] text-[#4F0809] hover:bg-[#F6EAE0] text-[10px] font-semibold flex items-center gap-1 cursor-pointer"
+                onClick={() => copyQRLink(qrModalTable.table_number)}
+                className="px-2 py-1 rounded bg-white border border-[#E8DCD2] text-[#4F0809] hover:bg-[#F6EAE0] text-[10px] font-semibold flex items-center gap-1 cursor-pointer shrink-0"
               >
                 {copiedLink ? <Check className="w-3 h-3 text-[#2E7D32]" /> : <Copy className="w-3 h-3" />}
                 <span>{copiedLink ? 'Copied' : 'Copy'}</span>
@@ -1574,12 +1630,12 @@ export default function TablesReservationsPage() {
 
             <div className="flex items-center justify-center gap-2">
               <a
-                href={`/qr/${qrModalTable.code || `table-${qrModalTable.table_number.toLowerCase()}`}`}
+                href={`/menu?qr=${qrVenue === 'cafe' ? 'c' : 'r'}&table=${qrModalTable.table_number}`}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#4F0809] hover:bg-[#6B1518] text-white text-xs font-semibold shadow-xs transition"
               >
-                <span>Open Dining Token</span>
+                <span>Open Menu &amp; Test Reserve</span>
                 <ExternalLink className="w-3 h-3 text-[#D8AA67]" />
               </a>
             </div>
