@@ -139,23 +139,17 @@ export default function RoomBookingsPage() {
         }
         if (data.roomTypes && Array.isArray(data.roomTypes)) {
           setRoomTypes(data.roomTypes);
-          if (!formRoomTypeId && data.roomTypes.length > 0) {
-            setFormRoomTypeId(data.roomTypes[0].id);
-          }
         }
       }
     } catch (err) {
       console.warn('Error fetching /api/rooms in bookings:', err);
     }
-  }, [formRoomTypeId]);
+  }, []);
 
   useEffect(() => {
     // 1. Initial hydration from cache & memory repository
     const rts = dataRepository.getRoomTypes();
     setRoomTypes(rts);
-    if (rts.length > 0 && !formRoomTypeId) {
-      setFormRoomTypeId(rts[0].id);
-    }
 
     if (typeof window !== 'undefined') {
       try {
@@ -231,7 +225,7 @@ export default function RoomBookingsPage() {
       unsubRes();
       unsubRooms();
     };
-  }, [fetchRoomsAndTypes, formRoomTypeId]);
+  }, [fetchRoomsAndTypes]);
 
   const loadData = () => {
     fetchRoomsAndTypes();
@@ -1126,10 +1120,7 @@ export default function RoomBookingsPage() {
                   {/* Strictly The Two Luxury Cards - No Duplicate Select Dropdown */}
                   <div className="grid grid-cols-2 gap-3">
                     {BOOKING_ROOM_CATEGORIES.map((cat) => {
-                      const isSelected =
-                        formRoomTypeId === cat.id ||
-                        (!formRoomTypeId && cat.id.endsWith('0001')) ||
-                        (formRoomTypeId && !formRoomTypeId.endsWith('0002') && cat.id.endsWith('0001'));
+                      const isSelected = formRoomTypeId === cat.id;
                       return (
                         <button
                           key={cat.id}

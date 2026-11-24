@@ -52,7 +52,7 @@ export default function RoomsHousekeepingPage() {
   // Add room modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newRoomNumber, setNewRoomNumber] = useState('');
-  const [newRoomTypeId, setNewRoomTypeId] = useState('');
+  const [newRoomTypeId, setNewRoomTypeId] = useState('d0000000-0000-0000-0000-000000000001');
   const [newRoomState, setNewRoomState] = useState<HousekeepingState>('available');
   const [newRoomNotes, setNewRoomNotes] = useState('');
   const [newRoomImages, setNewRoomImages] = useState<string[]>([]);
@@ -117,9 +117,6 @@ export default function RoomsHousekeepingPage() {
         }
         if (data.roomTypes && Array.isArray(data.roomTypes)) {
           setRoomTypes(data.roomTypes);
-          if (!newRoomTypeId && data.roomTypes.length > 0) {
-            setNewRoomTypeId(data.roomTypes[0].id);
-          }
         }
       }
     } catch (err) {
@@ -127,15 +124,12 @@ export default function RoomsHousekeepingPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [newRoomTypeId]);
+  }, []);
 
   useEffect(() => {
     // 1. Initial hydration from cache and repository
     const initialTypes = dataRepository.getRoomTypes();
     setRoomTypes(initialTypes);
-    if (initialTypes.length > 0) {
-      setNewRoomTypeId(initialTypes[0].id);
-    }
 
     if (typeof window !== 'undefined') {
       try {
@@ -637,10 +631,7 @@ export default function RoomsHousekeepingPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   {CHAMBER_CATEGORIES.map((cat) => {
-                    const isSelected =
-                      newRoomTypeId === cat.id ||
-                      (!newRoomTypeId && cat.id.endsWith('0001')) ||
-                      (newRoomTypeId && !newRoomTypeId.endsWith('0002') && cat.id.endsWith('0001'));
+                    const isSelected = newRoomTypeId === cat.id;
                     return (
                       <button
                         key={cat.id}
