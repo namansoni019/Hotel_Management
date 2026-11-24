@@ -40,6 +40,15 @@ const CHAMBER_CATEGORIES = [
   },
 ] as const;
 
+const ROOM_PHOTO_SLOTS = [
+  { id: 1, label: 'Cover Photo', desc: 'Main Chamber', badge: '👑 Cover' },
+  { id: 2, label: 'Bedroom', desc: 'Plush Bedding', badge: '🛏️ Bed' },
+  { id: 3, label: 'Royal Bath', desc: 'Marble Vanity', badge: '🛁 Bath' },
+  { id: 4, label: 'Balcony / View', desc: 'Palace Vista', badge: '🌅 View' },
+  { id: 5, label: 'Living Lounge', desc: 'Seating Area', badge: '🛋️ Living' },
+  { id: 6, label: 'Amenities', desc: 'Heritage Decor', badge: '✨ Details' },
+] as const;
+
 export default function RoomsHousekeepingPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
@@ -58,24 +67,49 @@ export default function RoomsHousekeepingPage() {
   const [newRoomImages, setNewRoomImages] = useState<string[]>([]);
   const [isDragging, setIsDragging] = useState(false);
 
-  const processFiles = (files: FileList | File[]) => {
-    Array.from(files).forEach((file) => {
-      if (!file.type.startsWith('image/')) return;
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        if (result) {
-          setNewRoomImages((prev) => [...prev, result]);
-        }
-      };
-      reader.readAsDataURL(file);
+  const handleBatchUpload = (files: FileList | File[]) => {
+    const valid = Array.from(files).filter((f) => f.type.startsWith('image/'));
+    if (valid.length === 0) return;
+
+    const remainingSlots = 6 - newRoomImages.length;
+    const toProcess = valid.slice(0, remainingSlots > 0 ? remainingSlots : 6);
+
+    const readers = toProcess.map((file) => {
+      return new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+    });
+
+    Promise.all(readers).then((results) => {
+      setNewRoomImages((prev) => {
+        const next = [...prev, ...results.filter(Boolean)];
+        return next.slice(0, 6);
+      });
     });
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    processFiles(files);
+  const handleSlotFileChange = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      if (result) {
+        setNewRoomImages((prev) => {
+          const next = [...prev];
+          next[index] = result;
+          return next.slice(0, 6);
+        });
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleRemoveSlotImage = (index: number) => {
+    setNewRoomImages((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -95,12 +129,8 @@ export default function RoomsHousekeepingPage() {
     e.stopPropagation();
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processFiles(e.dataTransfer.files);
+      handleBatchUpload(e.dataTransfer.files);
     }
-  };
-
-  const handleRemoveImage = (index: number) => {
-    setNewRoomImages((prev) => prev.filter((_, i) => i !== index));
   };
 
   const fetchRoomsData = useCallback(async () => {
@@ -692,92 +722,163 @@ export default function RoomsHousekeepingPage() {
                 </div>
               </div>
 
-              {/* Chamber Photographs / Gallery */}
+              {/* Chamber Photographs / Gallery (5 - 6 Photos) */}
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D]">
-                    Chamber Photographs / Gallery (Optional)
-                  </label>
-                  <span className="text-[10px] font-semibold text-[#8F6628]">
-                    {newRoomImages.length} {newRoomImages.length === 1 ? 'Photo' : 'Photos'} Attached
-                  </span>
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D]">
+                      Chamber Photographs (5 - 6 Photos)
+                    </label>
+                    <span className="text-[10px] text-[#9C7A45]">
+                      Upload 5 to 6 photos: Master view, bedroom, bathroom, balcony &amp; amenities
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span
+                      className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full transition-colors ${
+                        newRoomImages.length >= 5
+                          ? 'bg-[#2E7D32]/15 text-[#2E7D32] border border-[#2E7D32]/30'
+                          : 'bg-[#D8AA67]/20 text-[#856B4D] border border-[#D8AA67]/40'
+                      }`}
+                    >
+                      {newRoomImages.length >= 5 ? '✓ ' : ''}{newRoomImages.length} / 6 Photos
+                    </span>
+                  </div>
                 </div>
 
-                {/* Upload & Drag and Drop Zone */}
+                {/* Batch Upload & Drag-and-Drop Quick Bar */}
                 <div
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
-                  onClick={() => document.getElementById('room-photos-upload')?.click()}
-                  className={`relative border-2 border-dashed rounded-2xl p-5 text-center transition cursor-pointer flex flex-col items-center justify-center select-none group ${
+                  className={`border-2 border-dashed rounded-2xl p-3 text-center transition flex items-center justify-between gap-3 mb-2.5 select-none ${
                     isDragging
-                      ? 'border-[#4F0809] bg-[#EAE0D0] scale-[0.99] ring-2 ring-[#D8AA67]/40'
+                      ? 'border-[#4F0809] bg-[#EAE0D0] ring-2 ring-[#D8AA67]/40 scale-[0.99]'
                       : 'border-[#D8AA67]/60 hover:border-[#4F0809] bg-[#F5ECDC]/80 hover:bg-[#EFE2CC]'
                   }`}
                 >
-                  <input
-                    type="file"
-                    id="room-photos-upload"
-                    accept="image/*"
-                    multiple
-                    onChange={handleImageUpload}
-                    className="hidden"
-                  />
-
-                  <div className="w-12 h-12 rounded-2xl bg-[#4F0809]/10 border border-[#D8AA67]/40 flex items-center justify-center text-[#4F0809] mb-2 shadow-xs group-hover:scale-105 transition-transform">
-                    <Upload className="w-6 h-6 text-[#856B4D]" />
+                  <div className="flex items-center gap-2.5 text-left">
+                    <div className="w-8 h-8 rounded-xl bg-[#4F0809]/10 border border-[#D8AA67]/40 flex items-center justify-center text-[#4F0809] shrink-0">
+                      <Camera className="w-4 h-4 text-[#856B4D]" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-[#4F0809]">
+                        Drag &amp; drop all 5 - 6 photos together
+                      </div>
+                      <div className="text-[10px] text-[#856B4D]">
+                        Select multiple images or upload slot by slot below
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="text-xs font-bold text-[#4F0809] mb-1">
-                    <span className="text-[#856B4D] underline decoration-[#D8AA67]">Click to upload</span> or drag and drop chamber photos
-                  </div>
-                  <p className="text-[10px] text-[#856B4D]/80">
-                    Supports PNG, JPG, WEBP &bull; Upload multiple photos
-                  </p>
-                </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <input
+                      type="file"
+                      id="room-batch-upload"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => {
+                        if (e.target.files) handleBatchUpload(e.target.files);
+                      }}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="room-batch-upload"
+                      className="px-3 py-1.5 rounded-xl bg-[#4F0809] hover:bg-[#651012] text-[#FFF8EB] text-[11px] font-bold shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-[#D8AA67]" />
+                      Upload 5-6 Photos
+                    </label>
 
-                {/* Thumbnails preview strip */}
-                {newRoomImages.length > 0 && (
-                  <div className="mt-2.5 p-3 bg-[#F5ECDC]/70 border border-[#E8DFCE] rounded-xl">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] uppercase font-bold tracking-wider text-[#856B4D]">
-                        Attached Photographs ({newRoomImages.length})
-                      </span>
+                    {newRoomImages.length > 0 && (
                       <button
                         type="button"
                         onClick={() => setNewRoomImages([])}
-                        className="text-[10px] font-semibold text-red-700 hover:text-red-900 transition cursor-pointer"
+                        className="px-2 py-1 text-[10px] font-bold text-red-700 hover:text-red-900 transition cursor-pointer"
+                        title="Remove all attached photos"
                       >
-                        Remove All
+                        Clear All
                       </button>
-                    </div>
-                    <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto">
-                      {newRoomImages.map((img, idx) => (
-                        <div
-                          key={idx}
-                          className="relative w-16 h-14 rounded-lg overflow-hidden border border-[#D8AA67]/60 group bg-stone-100 flex-shrink-0 shadow-xs"
-                        >
-                          <img
-                            src={img}
-                            alt={`Chamber photo ${idx + 1}`}
-                            className="w-full h-full object-cover"
-                          />
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveImage(idx);
-                            }}
-                            className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/70 hover:bg-red-600 text-white flex items-center justify-center text-[9px] transition cursor-pointer"
-                            title="Remove photo"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                    )}
                   </div>
-                )}
+                </div>
+
+                {/* 6 Dedicated Chamber Photo Slots Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {ROOM_PHOTO_SLOTS.map((slot, idx) => {
+                    const img = newRoomImages[idx];
+                    const inputId = `slot-photo-upload-${idx}`;
+
+                    return (
+                      <div
+                        key={slot.id}
+                        className="relative rounded-xl overflow-hidden border border-[#D8AA67]/50 bg-[#F5ECDC]/90 transition hover:shadow-xs group"
+                      >
+                        <input
+                          type="file"
+                          id={inputId}
+                          accept="image/*"
+                          onChange={(e) => handleSlotFileChange(idx, e)}
+                          className="hidden"
+                        />
+
+                        {img ? (
+                          /* Slot filled with image */
+                          <div className="relative h-24 sm:h-26 w-full">
+                            <img
+                              src={img}
+                              alt={slot.label}
+                              className="w-full h-full object-cover"
+                            />
+                            {/* Slot Tag Badge */}
+                            <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/65 backdrop-blur-xs text-[9px] font-bold text-[#FFF8EB]">
+                              {slot.badge}
+                            </div>
+                            {/* Delete Button */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveSlotImage(idx);
+                              }}
+                              className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-black/70 hover:bg-red-600 text-white flex items-center justify-center text-[10px] transition cursor-pointer shadow-xs"
+                              title="Delete this photo"
+                            >
+                              ✕
+                            </button>
+                            {/* Replace Hover Overlay */}
+                            <label
+                              htmlFor={inputId}
+                              className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-[#FFF8EB] text-[10px] font-bold cursor-pointer gap-1"
+                            >
+                              <Camera className="w-4 h-4 text-[#D8AA67]" />
+                              <span>Replace Photo</span>
+                            </label>
+                          </div>
+                        ) : (
+                          /* Empty Slot */
+                          <label
+                            htmlFor={inputId}
+                            className="h-24 sm:h-26 p-2 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-[#EFE2CC] transition border-2 border-dashed border-[#D8AA67]/40 hover:border-[#4F0809] rounded-xl select-none"
+                          >
+                            <div className="w-7 h-7 rounded-lg bg-[#4F0809]/10 text-[#4F0809] flex items-center justify-center mb-1 group-hover:scale-110 transition-transform">
+                              <Plus className="w-4 h-4 text-[#856B4D]" />
+                            </div>
+                            <span className="text-[10px] font-bold text-[#4F0809] leading-tight">
+                              {slot.label}
+                            </span>
+                            <span className="text-[9px] text-[#856B4D]/80 mt-0.5">
+                              {slot.desc}
+                            </span>
+                            <span className="text-[8px] font-semibold text-[#D8AA67] mt-1 bg-[#4F0809]/5 px-1.5 py-0.5 rounded">
+                              + Photo {slot.id}
+                            </span>
+                          </label>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Chamber Amenities / Notes */}
