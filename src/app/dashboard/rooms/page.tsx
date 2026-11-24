@@ -40,15 +40,6 @@ const CHAMBER_CATEGORIES = [
   },
 ] as const;
 
-const PALACE_ROOM_PRESETS = [
-  { label: 'Deluxe Garden', url: '/images/rooms/deluxe-garden.jpg' },
-  { label: 'Heritage Jharokha', url: '/images/rooms/jharokha-room.jpg' },
-  { label: 'Lakeview Suite', url: '/images/rooms/lakeview-suite.jpg' },
-  { label: 'Royal Courtyard', url: '/images/rooms/royal-courtyard.jpg' },
-  { label: 'Sheesh Mahal', url: '/images/rooms/sheesh-mahal.jpg' },
-  { label: 'Thar Heritage', url: '/images/rooms/thar-heritage.jpg' },
-] as const;
-
 export default function RoomsHousekeepingPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
@@ -65,24 +56,47 @@ export default function RoomsHousekeepingPage() {
   const [newRoomState, setNewRoomState] = useState<HousekeepingState>('available');
   const [newRoomNotes, setNewRoomNotes] = useState('');
   const [newRoomImages, setNewRoomImages] = useState<string[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  const processFiles = (files: FileList | File[]) => {
     Array.from(files).forEach((file) => {
+      if (!file.type.startsWith('image/')) return;
       const reader = new FileReader();
       reader.onloadend = () => {
         const result = reader.result as string;
-        setNewRoomImages((prev) => [...prev, result]);
+        if (result) {
+          setNewRoomImages((prev) => [...prev, result]);
+        }
       };
       reader.readAsDataURL(file);
     });
   };
 
-  const handleTogglePresetImage = (url: string) => {
-    setNewRoomImages((prev) =>
-      prev.includes(url) ? prev.filter((u) => u !== url) : [...prev, url]
-    );
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    processFiles(files);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFiles(e.dataTransfer.files);
+    }
   };
 
   const handleRemoveImage = (index: number) => {
@@ -698,59 +712,59 @@ export default function RoomsHousekeepingPage() {
                   </span>
                 </div>
 
-                <div className="p-3 bg-[#F5ECDC]/90 border border-[#E8DFCE] rounded-2xl space-y-2.5">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      type="file"
-                      id="room-photos-upload"
-                      accept="image/*"
-                      multiple
-                      onChange={handleImageUpload}
-                      className="hidden"
-                    />
-                    <label
-                      htmlFor="room-photos-upload"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#4F0809] hover:bg-[#651012] text-[#FFF8EB] text-xs font-bold shadow-xs transition cursor-pointer"
-                    >
-                      <Upload className="w-3.5 h-3.5 text-[#D8AA67]" />
-                      Upload Device Photos
-                    </label>
+                {/* Upload & Drag and Drop Zone */}
+                <div
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => document.getElementById('room-photos-upload')?.click()}
+                  className={`relative border-2 border-dashed rounded-2xl p-5 text-center transition cursor-pointer flex flex-col items-center justify-center select-none group ${
+                    isDragging
+                      ? 'border-[#4F0809] bg-[#EAE0D0] scale-[0.99] ring-2 ring-[#D8AA67]/40'
+                      : 'border-[#D8AA67]/60 hover:border-[#4F0809] bg-[#F5ECDC]/80 hover:bg-[#EFE2CC]'
+                  }`}
+                >
+                  <input
+                    type="file"
+                    id="room-photos-upload"
+                    accept="image/*"
+                    multiple
+                    onChange={handleImageUpload}
+                    className="hidden"
+                  />
 
-                    <span className="text-[10px] text-[#856B4D] font-medium">
-                      or choose royal preset:
-                    </span>
+                  <div className="w-12 h-12 rounded-2xl bg-[#4F0809]/10 border border-[#D8AA67]/40 flex items-center justify-center text-[#4F0809] mb-2 shadow-xs group-hover:scale-105 transition-transform">
+                    <Upload className="w-6 h-6 text-[#856B4D]" />
                   </div>
 
-                  {/* Preset Quick Chips */}
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {PALACE_ROOM_PRESETS.map((p, idx) => {
-                      const isAdded = newRoomImages.includes(p.url);
-                      return (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => handleTogglePresetImage(p.url)}
-                          className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition cursor-pointer flex items-center gap-1 ${
-                            isAdded
-                              ? 'bg-[#4F0809] text-[#FFF8EB] border border-[#D8AA67]'
-                              : 'bg-[#FDF8EE] hover:bg-[#EFE2CC] text-[#4F0809] border border-[#E8DFCE]'
-                          }`}
-                        >
-                          <ImageIcon className="w-3 h-3 text-[#D8AA67]" />
-                          {p.label}
-                          {isAdded && <CheckCircle2 className="w-3 h-3 text-[#D8AA67]" />}
-                        </button>
-                      );
-                    })}
+                  <div className="text-xs font-bold text-[#4F0809] mb-1">
+                    <span className="text-[#856B4D] underline decoration-[#D8AA67]">Click to upload</span> or drag and drop chamber photos
                   </div>
+                  <p className="text-[10px] text-[#856B4D]/80">
+                    Supports PNG, JPG, WEBP &bull; Upload multiple photos
+                  </p>
+                </div>
 
-                  {/* Thumbnails preview strip */}
-                  {newRoomImages.length > 0 && (
-                    <div className="pt-2 border-t border-[#E8DFCE]/80 flex flex-wrap gap-2">
+                {/* Thumbnails preview strip */}
+                {newRoomImages.length > 0 && (
+                  <div className="mt-2.5 p-3 bg-[#F5ECDC]/70 border border-[#E8DFCE] rounded-xl">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-[#856B4D]">
+                        Attached Photographs ({newRoomImages.length})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setNewRoomImages([])}
+                        className="text-[10px] font-semibold text-red-700 hover:text-red-900 transition cursor-pointer"
+                      >
+                        Remove All
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto">
                       {newRoomImages.map((img, idx) => (
                         <div
                           key={idx}
-                          className="relative w-16 h-14 rounded-lg overflow-hidden border border-[#D8AA67]/60 group bg-stone-100 flex-shrink-0"
+                          className="relative w-16 h-14 rounded-lg overflow-hidden border border-[#D8AA67]/60 group bg-stone-100 flex-shrink-0 shadow-xs"
                         >
                           <img
                             src={img}
@@ -759,7 +773,10 @@ export default function RoomsHousekeepingPage() {
                           />
                           <button
                             type="button"
-                            onClick={() => handleRemoveImage(idx)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveImage(idx);
+                            }}
                             className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/70 hover:bg-red-600 text-white flex items-center justify-center text-[9px] transition cursor-pointer"
                             title="Remove photo"
                           >
@@ -768,8 +785,8 @@ export default function RoomsHousekeepingPage() {
                         </div>
                       ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
 
               {/* Chamber Amenities / Notes */}
