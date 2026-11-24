@@ -115,6 +115,8 @@ export interface Room {
   room_number: string;
   housekeeping_state: HousekeepingState;
   notes: string | null;
+  images?: string[];
+  photos?: string[];
   room_type?: RoomType;
 }
 

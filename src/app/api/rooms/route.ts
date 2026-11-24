@@ -19,12 +19,18 @@ export async function GET() {
           const data = d.data();
           const typeId = data.room_type_id || roomTypes[0].id;
           const matchedType = roomTypes.find((rt) => rt.id === typeId) || roomTypes[0];
+          const rawImages = data.images || data.photos;
+          const roomImages = Array.isArray(rawImages) && rawImages.length > 0
+            ? rawImages
+            : (matchedType.photos ? [...matchedType.photos] : []);
           return {
             id: d.id,
             room_number: data.room_number,
             room_type_id: typeId,
             housekeeping_state: data.housekeeping_state || 'available',
             notes: data.notes || null,
+            images: roomImages,
+            photos: roomImages,
             room_type: data.room_type || matchedType,
           } as Room;
         });
@@ -56,7 +62,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { room_number, room_type_id, housekeeping_state, notes } = body;
+    const { room_number, room_type_id, housekeeping_state, notes, images, photos } = body;
 
     if (!room_number) {
       return NextResponse.json(
@@ -80,6 +86,10 @@ export async function POST(request: Request) {
     const roomId = `room-${Date.now()}`;
     const cleanNumber = String(room_number).replace(/^(room|chamber)\s*/i, '').trim();
 
+    const inputImages = Array.isArray(images) && images.length > 0
+      ? images
+      : (Array.isArray(photos) && photos.length > 0 ? photos : (matchedType.photos ? [...matchedType.photos] : []));
+
     const roomData: Room = {
       id: roomId,
       room_number: cleanNumber,
@@ -87,6 +97,8 @@ export async function POST(request: Request) {
       room_type: matchedType,
       housekeeping_state: housekeeping_state || 'available',
       notes: notes || null,
+      images: inputImages,
+      photos: inputImages,
     };
 
     // Save to Firestore
@@ -98,6 +110,8 @@ export async function POST(request: Request) {
         room_type_name: matchedType.name,
         housekeeping_state: housekeeping_state || 'available',
         notes: notes || null,
+        images: inputImages,
+        photos: inputImages,
         created_at: serverTimestamp(),
       });
     } catch (err) {

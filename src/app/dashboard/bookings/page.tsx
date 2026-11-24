@@ -35,6 +35,7 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { reservationsService } from '@/lib/services/reservations-service';
 import { dataRepository } from '@/lib/data/repository';
+import PalaceDatePicker from '@/components/ui/palace-date-picker';
 import type { Reservation, RoomType, Room, GuestAadhaarDetail } from '@/lib/types';
 
 function generateSampleAadhaarSvg(name: string, aadhaarNum: string): string {
@@ -212,6 +213,8 @@ export default function RoomBookingsPage() {
               room_type_id: typeId,
               housekeeping_state: data.housekeeping_state || 'available',
               notes: data.notes || null,
+              images: data.images || data.photos || [],
+              photos: data.photos || data.images || [],
               room_type: data.room_type || matchedType,
             } as Room;
           });
@@ -1109,7 +1112,7 @@ export default function RoomBookingsPage() {
                   </div>
                 </div>
 
-                {/* Room Category (Strictly Deluxe vs Non-Deluxe) & Guest Count */}
+                {/* Room Category (Strictly ONE selection: Deluxe vs Non-Deluxe) */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D]">
@@ -1120,8 +1123,8 @@ export default function RoomBookingsPage() {
                     </span>
                   </div>
 
-                  {/* Two Theme Cards */}
-                  <div className="grid grid-cols-2 gap-3 mb-2.5">
+                  {/* Strictly The Two Luxury Cards - No Duplicate Select Dropdown */}
+                  <div className="grid grid-cols-2 gap-3">
                     {BOOKING_ROOM_CATEGORIES.map((cat) => {
                       const isSelected =
                         formRoomTypeId === cat.id ||
@@ -1154,64 +1157,79 @@ export default function RoomBookingsPage() {
                       );
                     })}
                   </div>
-
-                  {/* Synchronized Select Dropdown with strictly 2 options */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <select
-                        value={formRoomTypeId || BOOKING_ROOM_CATEGORIES[0].id}
-                        onChange={(e) => setFormRoomTypeId(e.target.value)}
-                        className="w-full h-11 px-3.5 rounded-xl border border-[#E8DFCE] text-xs sm:text-sm bg-[#F5ECDC] focus:bg-[#EFE2CC] font-semibold text-[#4F0809] focus:border-[#4F0809] focus:outline-none cursor-pointer"
-                      >
-                        {BOOKING_ROOM_CATEGORIES.map((cat) => (
-                          <option key={cat.id} value={cat.id}>
-                            {cat.fullLabel}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <select
-                        value={formPartySize}
-                        onChange={(e) => handlePartySizeChange(e.target.value)}
-                        className="w-full h-11 px-3.5 rounded-xl border border-[#E8DFCE] text-xs sm:text-sm bg-[#F5ECDC] focus:bg-[#EFE2CC] font-semibold text-[#4F0809] focus:border-[#4F0809] focus:outline-none cursor-pointer"
-                      >
-                        <option value="1">1 Adult (1 Aadhaar required)</option>
-                        <option value="2">2 Adults (Both 2 Aadhaars required)</option>
-                        <option value="3">3 Adults (All 3 Aadhaars required)</option>
-                        <option value="4">4 Guests / Family (All 4 Aadhaars required)</option>
-                      </select>
-                    </div>
-                  </div>
                 </div>
 
-                {/* Check-In Date & Check-Out Date */}
+                {/* Guest Count & Specific Chamber Allocation */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
-                      Check-In Date *
+                      Guest Count (Adults) *
                     </label>
-                    <input
-                      type="date"
-                      required
-                      value={formCheckIn}
-                      onChange={(e) => setFormCheckIn(e.target.value)}
-                      className="w-full h-11 px-3.5 rounded-xl border border-[#E8DFCE] text-xs sm:text-sm bg-[#F5ECDC] focus:bg-[#EFE2CC] font-semibold text-[#4F0809] focus:border-[#4F0809] focus:outline-none"
-                    />
+                    <select
+                      value={formPartySize}
+                      onChange={(e) => handlePartySizeChange(e.target.value)}
+                      className="w-full h-11 px-3.5 rounded-xl border border-[#E8DFCE] text-xs sm:text-sm bg-[#F5ECDC] focus:bg-[#EFE2CC] font-semibold text-[#4F0809] focus:border-[#4F0809] focus:outline-none cursor-pointer"
+                    >
+                      <option value="1">1 Adult (1 Aadhaar required)</option>
+                      <option value="2">2 Adults (Both 2 Aadhaars required)</option>
+                      <option value="3">3 Adults (All 3 Aadhaars required)</option>
+                      <option value="4">4 Guests / Family (All 4 Aadhaars required)</option>
+                    </select>
                   </div>
+
                   <div>
                     <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
-                      Check-Out Date *
+                      Specific Chamber (Optional)
                     </label>
-                    <input
-                      type="date"
-                      required
-                      value={formCheckOut}
-                      onChange={(e) => setFormCheckOut(e.target.value)}
-                      className="w-full h-11 px-3.5 rounded-xl border border-[#E8DFCE] text-xs sm:text-sm bg-[#F5ECDC] focus:bg-[#EFE2CC] font-semibold text-[#4F0809] focus:border-[#4F0809] focus:outline-none"
-                    />
+                    <select
+                      value={formRoomId}
+                      onChange={(e) => {
+                        const chosenId = e.target.value;
+                        setFormRoomId(chosenId);
+                        const found = rooms.find((r) => r.id === chosenId);
+                        if (found?.room_type_id) {
+                          setFormRoomTypeId(found.room_type_id);
+                        }
+                      }}
+                      className="w-full h-11 px-3.5 rounded-xl border border-[#E8DFCE] text-xs sm:text-sm bg-[#F5ECDC] focus:bg-[#EFE2CC] text-[#4F0809] font-medium focus:border-[#4F0809] focus:outline-none cursor-pointer"
+                    >
+                      <option value="">Auto-assign best available chamber</option>
+                      {rooms.map((r) => {
+                        const isAvail = !r.housekeeping_state || r.housekeeping_state.toLowerCase() === 'available';
+                        return (
+                          <option key={r.id} value={r.id}>
+                            Room {r.room_number} • {r.room_type?.name || 'Chamber'} ({isAvail ? 'Available / Clean' : r.housekeeping_state})
+                          </option>
+                        );
+                      })}
+                    </select>
                   </div>
+                </div>
+
+                {/* Check-In Date & Check-Out Date with Custom Royal Minimal Theme Calendar */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <PalaceDatePicker
+                    label="Check-In Date"
+                    required
+                    value={formCheckIn}
+                    onChange={(val) => {
+                      setFormCheckIn(val);
+                      // If check-out is before or equal to new check-in, set check-out to the next day
+                      if (formCheckOut <= val) {
+                        const d = new Date(val + 'T00:00:00');
+                        d.setDate(d.getDate() + 1);
+                        const nextDay = d.toISOString().split('T')[0];
+                        setFormCheckOut(nextDay);
+                      }
+                    }}
+                  />
+                  <PalaceDatePicker
+                    label="Check-Out Date"
+                    required
+                    minDate={formCheckIn}
+                    value={formCheckOut}
+                    onChange={(val) => setFormCheckOut(val)}
+                  />
                 </div>
 
                 {/* ── Dynamic Mandatory Guest Aadhaar Identification Section ── */}
@@ -1377,35 +1395,6 @@ export default function RoomBookingsPage() {
                       );
                     })}
                   </div>
-                </div>
-
-                {/* Specific Chamber / Suite Allocation */}
-                <div>
-                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
-                    Specific Chamber / Suite Allocation (Optional)
-                  </label>
-                  <select
-                    value={formRoomId}
-                    onChange={(e) => {
-                      const chosenId = e.target.value;
-                      setFormRoomId(chosenId);
-                      const found = rooms.find((r) => r.id === chosenId);
-                      if (found?.room_type_id) {
-                        setFormRoomTypeId(found.room_type_id);
-                      }
-                    }}
-                    className="w-full h-11 px-3.5 rounded-xl border border-[#E8DFCE] text-xs sm:text-sm bg-[#F5ECDC] focus:bg-[#EFE2CC] text-[#4F0809] font-medium focus:border-[#4F0809] focus:outline-none cursor-pointer"
-                  >
-                    <option value="">Auto-assign best available chamber</option>
-                    {rooms.map((r) => {
-                      const isAvail = !r.housekeeping_state || r.housekeeping_state.toLowerCase() === 'available';
-                      return (
-                        <option key={r.id} value={r.id}>
-                          Room {r.room_number} • {r.room_type?.name || 'Chamber'} ({isAvail ? 'Available / Clean' : r.housekeeping_state})
-                        </option>
-                      );
-                    })}
-                  </select>
                 </div>
 
                 {/* Special Requests */}

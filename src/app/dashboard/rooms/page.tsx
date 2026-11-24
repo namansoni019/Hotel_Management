@@ -14,6 +14,10 @@ import {
   Search,
   Filter,
   Trash2,
+  Upload,
+  Image as ImageIcon,
+  Camera,
+  X,
 } from 'lucide-react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -36,6 +40,15 @@ const CHAMBER_CATEGORIES = [
   },
 ] as const;
 
+const PALACE_ROOM_PRESETS = [
+  { label: 'Deluxe Garden', url: '/images/rooms/deluxe-garden.jpg' },
+  { label: 'Heritage Jharokha', url: '/images/rooms/jharokha-room.jpg' },
+  { label: 'Lakeview Suite', url: '/images/rooms/lakeview-suite.jpg' },
+  { label: 'Royal Courtyard', url: '/images/rooms/royal-courtyard.jpg' },
+  { label: 'Sheesh Mahal', url: '/images/rooms/sheesh-mahal.jpg' },
+  { label: 'Thar Heritage', url: '/images/rooms/thar-heritage.jpg' },
+] as const;
+
 export default function RoomsHousekeepingPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
@@ -51,6 +64,30 @@ export default function RoomsHousekeepingPage() {
   const [newRoomTypeId, setNewRoomTypeId] = useState('');
   const [newRoomState, setNewRoomState] = useState<HousekeepingState>('available');
   const [newRoomNotes, setNewRoomNotes] = useState('');
+  const [newRoomImages, setNewRoomImages] = useState<string[]>([]);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        setNewRoomImages((prev) => [...prev, result]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleTogglePresetImage = (url: string) => {
+    setNewRoomImages((prev) =>
+      prev.includes(url) ? prev.filter((u) => u !== url) : [...prev, url]
+    );
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setNewRoomImages((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const fetchRoomsData = useCallback(async () => {
     setIsLoading(true);
@@ -125,6 +162,8 @@ export default function RoomsHousekeepingPage() {
               room_type_id: typeId,
               housekeeping_state: data.housekeeping_state || 'available',
               notes: data.notes || null,
+              images: data.images || data.photos || [],
+              photos: data.photos || data.images || [],
               room_type: data.room_type || matchedType,
             } as Room;
           });
@@ -201,6 +240,7 @@ export default function RoomsHousekeepingPage() {
           room_type_id: targetTypeId,
           housekeeping_state: newRoomState,
           notes: newRoomNotes || null,
+          images: newRoomImages,
         }),
       });
 
@@ -214,6 +254,7 @@ export default function RoomsHousekeepingPage() {
           room_type_id: targetTypeId,
           housekeeping_state: newRoomState,
           notes: newRoomNotes || null,
+          images: newRoomImages,
         });
         savedRoom.room_type = matchedType;
       }
@@ -230,6 +271,7 @@ export default function RoomsHousekeepingPage() {
       setIsAddModalOpen(false);
       setNewRoomNumber('');
       setNewRoomNotes('');
+      setNewRoomImages([]);
       fetchRoomsData();
     } catch (err: any) {
       console.error('Error creating room:', err);
@@ -401,6 +443,14 @@ export default function RoomsHousekeepingPage() {
             const isAvail = room.housekeeping_state === 'available';
             const isClean = room.housekeeping_state === 'cleaning';
             const isDirty = room.housekeeping_state === 'dirty';
+            const roomImg =
+              (room.images && room.images.length > 0)
+                ? room.images[0]
+                : (room.photos && room.photos.length > 0)
+                ? room.photos[0]
+                : (room.room_type?.photos && room.room_type.photos.length > 0)
+                ? room.room_type.photos[0]
+                : '/images/rooms/deluxe-garden.jpg';
 
             return (
               <div
@@ -416,7 +466,25 @@ export default function RoomsHousekeepingPage() {
                 }`}
               >
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
+                  {/* Chamber Photo Thumbnail */}
+                  <div className="relative w-full h-24 rounded-lg overflow-hidden mb-2 bg-[#F5ECDC] group">
+                    <img
+                      src={roomImg}
+                      alt={`Room ${room.room_number}`}
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                    />
+                    <div className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-[10px] font-bold text-[#FFF8EB] font-mono">
+                      № {room.room_number}
+                    </div>
+                    {((room.images && room.images.length > 1) || (room.photos && room.photos.length > 1)) && (
+                      <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-xs text-[9px] font-semibold text-[#FFF8EB] flex items-center gap-1">
+                        <Camera className="w-3 h-3 text-[#D8AA67]" />
+                        {(room.images || room.photos)?.length}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between mb-1">
                     <span
                       className="text-base font-bold text-[#302421]"
                       style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
@@ -481,7 +549,10 @@ export default function RoomsHousekeepingPage() {
             <div className="bg-gradient-to-r from-[#4F0809] via-[#651012] to-[#4F0809] text-[#FFF8EB] p-5 relative border-b border-[#D8AA67]/40">
               <button
                 type="button"
-                onClick={() => setIsAddModalOpen(false)}
+                onClick={() => {
+                  setIsAddModalOpen(false);
+                  setNewRoomImages([]);
+                }}
                 className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#D8AA67] flex items-center justify-center transition-colors cursor-pointer"
                 aria-label="Close dialog"
               >
@@ -616,6 +687,91 @@ export default function RoomsHousekeepingPage() {
                 </div>
               </div>
 
+              {/* Chamber Photographs / Gallery */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D]">
+                    Chamber Photographs / Gallery (Optional)
+                  </label>
+                  <span className="text-[10px] font-semibold text-[#8F6628]">
+                    {newRoomImages.length} {newRoomImages.length === 1 ? 'Photo' : 'Photos'} Attached
+                  </span>
+                </div>
+
+                <div className="p-3 bg-[#F5ECDC]/90 border border-[#E8DFCE] rounded-2xl space-y-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="file"
+                      id="room-photos-upload"
+                      accept="image/*"
+                      multiple
+                      onChange={handleImageUpload}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="room-photos-upload"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#4F0809] hover:bg-[#651012] text-[#FFF8EB] text-xs font-bold shadow-xs transition cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-[#D8AA67]" />
+                      Upload Device Photos
+                    </label>
+
+                    <span className="text-[10px] text-[#856B4D] font-medium">
+                      or choose royal preset:
+                    </span>
+                  </div>
+
+                  {/* Preset Quick Chips */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {PALACE_ROOM_PRESETS.map((p, idx) => {
+                      const isAdded = newRoomImages.includes(p.url);
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => handleTogglePresetImage(p.url)}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-semibold transition cursor-pointer flex items-center gap-1 ${
+                            isAdded
+                              ? 'bg-[#4F0809] text-[#FFF8EB] border border-[#D8AA67]'
+                              : 'bg-[#FDF8EE] hover:bg-[#EFE2CC] text-[#4F0809] border border-[#E8DFCE]'
+                          }`}
+                        >
+                          <ImageIcon className="w-3 h-3 text-[#D8AA67]" />
+                          {p.label}
+                          {isAdded && <CheckCircle2 className="w-3 h-3 text-[#D8AA67]" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Thumbnails preview strip */}
+                  {newRoomImages.length > 0 && (
+                    <div className="pt-2 border-t border-[#E8DFCE]/80 flex flex-wrap gap-2">
+                      {newRoomImages.map((img, idx) => (
+                        <div
+                          key={idx}
+                          className="relative w-16 h-14 rounded-lg overflow-hidden border border-[#D8AA67]/60 group bg-stone-100 flex-shrink-0"
+                        >
+                          <img
+                            src={img}
+                            alt={`Chamber photo ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveImage(idx)}
+                            className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/70 hover:bg-red-600 text-white flex items-center justify-center text-[9px] transition cursor-pointer"
+                            title="Remove photo"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Chamber Amenities / Notes */}
               <div>
                 <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
@@ -634,7 +790,10 @@ export default function RoomsHousekeepingPage() {
               <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-[#E8DFCE]">
                 <button
                   type="button"
-                  onClick={() => setIsAddModalOpen(false)}
+                  onClick={() => {
+                    setIsAddModalOpen(false);
+                    setNewRoomImages([]);
+                  }}
                   className="px-4 py-2.5 rounded-xl bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#4F0809] text-xs font-bold transition cursor-pointer"
                 >
                   Cancel

@@ -144,7 +144,7 @@ export const dataRepository = {
     roomsState[idx] = { ...roomsState[idx], housekeeping_state: state };
     return roomsState[idx];
   },
-  addRoom(room: { room_number: string; room_type_id: string; housekeeping_state: Room['housekeeping_state']; notes?: string | null; room_type?: RoomType }): Room {
+  addRoom(room: { room_number: string; room_type_id: string; housekeeping_state: Room['housekeeping_state']; notes?: string | null; images?: string[]; photos?: string[]; room_type?: RoomType }): Room {
     const matchedType = room.room_type || roomTypesState.find((rt) => rt.id === room.room_type_id) || roomTypesState[0];
     const newRoom: Room = {
       id: `room-${Date.now()}`,
@@ -153,6 +153,8 @@ export const dataRepository = {
       room_type: matchedType,
       housekeeping_state: room.housekeeping_state,
       notes: room.notes || null,
+      images: room.images || room.photos || (matchedType.photos ? [...matchedType.photos] : []),
+      photos: room.photos || room.images || (matchedType.photos ? [...matchedType.photos] : []),
     };
     roomsState.push(newRoom);
     return newRoom;
