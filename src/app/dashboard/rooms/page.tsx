@@ -18,6 +18,9 @@ import {
   Image as ImageIcon,
   Camera,
   X,
+  Pencil,
+  Users,
+  Check,
 } from 'lucide-react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -31,14 +34,57 @@ const CHAMBER_CATEGORIES = [
     name: 'Deluxe Room',
     badge: 'ROYAL LUXURY',
     rate: '₹6,500 / night',
+    defaultPrice: 6500,
+    defaultBed: 'Plush King Bed',
+    defaultAmenities: [
+      'Complimentary Wi-Fi',
+      'Air Conditioning (AC)',
+      '24x7 Room Service',
+      'In-room Dining',
+      'Valet Parking',
+      'Plush King Bed',
+      'Luxury Toiletries',
+      '4K Smart TV',
+    ],
+    defaultDesc: 'Spacious royal deluxe chamber with handcrafted furnishings, plush king bed, deep marble bath, and palace vistas.',
   },
   {
     id: 'd0000000-0000-0000-0000-000000000002',
     name: 'Non-Deluxe Room',
     badge: 'HERITAGE STANDARD',
     rate: '₹4,500 / night',
+    defaultPrice: 4500,
+    defaultBed: 'Classic Double Bed',
+    defaultAmenities: [
+      'Complimentary Wi-Fi',
+      'Air Conditioning (AC)',
+      '24x7 Room Service',
+      'In-room Dining',
+      'Valet Parking',
+      'En-suite Bathroom',
+      'Smart TV',
+    ],
+    defaultDesc: 'Comfortable heritage non-deluxe chamber featuring classic Rajputana architecture, cozy double bed, and essential palace comforts.',
   },
 ] as const;
+
+const PRESET_AMENITIES = [
+  'Complimentary Wi-Fi',
+  'Air Conditioning (AC)',
+  '24x7 Room Service',
+  'In-room Dining',
+  'Valet Parking',
+  'Plush King Bed',
+  'Classic Double Bed',
+  'Luxury Toiletries',
+  '4K Smart TV',
+  'Smart TV',
+  'En-suite Bathroom',
+  'Private Balcony',
+  'Mini Bar',
+  'Deep Marble Bath',
+  'Tea & Coffee Maker',
+];
 
 const ROOM_PHOTO_SLOTS = [
   { id: 1, label: 'Cover Photo', desc: 'Main Chamber', badge: '👑 Cover' },
@@ -57,12 +103,20 @@ export default function RoomsHousekeepingPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
 
-  // Add room modal
+  // Add / Edit room modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [newRoomNumber, setNewRoomNumber] = useState('');
   const [newRoomTypeId, setNewRoomTypeId] = useState('d0000000-0000-0000-0000-000000000001');
+  const [newRoomPrice, setNewRoomPrice] = useState('6500');
+  const [newRoomCapacity, setNewRoomCapacity] = useState('2');
+  const [newRoomBedType, setNewRoomBedType] = useState('Plush King Bed');
   const [newRoomState, setNewRoomState] = useState<HousekeepingState>('available');
+  const [newRoomAmenities, setNewRoomAmenities] = useState<string[]>([...CHAMBER_CATEGORIES[0].defaultAmenities]);
+  const [customAmenity, setCustomAmenity] = useState('');
+  const [newRoomDescription, setNewRoomDescription] = useState<string>(CHAMBER_CATEGORIES[0].defaultDesc);
   const [newRoomNotes, setNewRoomNotes] = useState('');
   const [newRoomImages, setNewRoomImages] = useState<string[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -279,7 +333,98 @@ export default function RoomsHousekeepingPage() {
     }
   };
 
-  const handleCreateRoom = async (e: React.FormEvent) => {
+  const showToast = (msg: string) => {
+    setSuccessToast(msg);
+    setTimeout(() => setSuccessToast(null), 3500);
+  };
+
+  const openAddModal = () => {
+    const defCat = CHAMBER_CATEGORIES[0];
+    setEditingRoom(null);
+    setNewRoomNumber('');
+    setNewRoomTypeId(defCat.id);
+    setNewRoomPrice(String(defCat.defaultPrice));
+    setNewRoomCapacity('2');
+    setNewRoomBedType(defCat.defaultBed);
+    setNewRoomState('available');
+    setNewRoomAmenities([...defCat.defaultAmenities]);
+    setCustomAmenity('');
+    setNewRoomDescription(defCat.defaultDesc);
+    setNewRoomNotes('');
+    setNewRoomImages([]);
+    setActionError(null);
+    setIsAddModalOpen(true);
+  };
+
+  const openEditModal = (room: Room) => {
+    const isNonDeluxe =
+      room.room_type_id === 'd0000000-0000-0000-0000-000000000002' ||
+      (room.room_category || room.room_type?.name || '').toLowerCase().includes('non');
+    const cat = isNonDeluxe ? CHAMBER_CATEGORIES[1] : CHAMBER_CATEGORIES[0];
+
+    const resolvedPrice =
+      room.price_per_night ||
+      (room.base_rate_minor ? Math.round(room.base_rate_minor / 100) : cat.defaultPrice);
+    const resolvedAmenities =
+      room.amenities && room.amenities.length > 0
+        ? [...room.amenities]
+        : room.room_type?.amenities
+        ? [...room.room_type.amenities]
+        : [...cat.defaultAmenities];
+    const resolvedImages =
+      room.images && room.images.length > 0
+        ? [...room.images]
+        : room.photos && room.photos.length > 0
+        ? [...room.photos]
+        : [];
+
+    setEditingRoom(room);
+    setNewRoomNumber(room.room_number || '');
+    setNewRoomTypeId(cat.id);
+    setNewRoomPrice(String(resolvedPrice));
+    setNewRoomCapacity(String(room.capacity || room.room_type?.capacity || 2));
+    setNewRoomBedType(room.bed_type || cat.defaultBed);
+    setNewRoomState(room.housekeeping_state || 'available');
+    setNewRoomAmenities(resolvedAmenities);
+    setCustomAmenity('');
+    setNewRoomDescription(room.description || room.room_type?.description || cat.defaultDesc);
+    setNewRoomNotes(room.notes || '');
+    setNewRoomImages(resolvedImages.slice(0, 6));
+    setActionError(null);
+    setIsAddModalOpen(true);
+  };
+
+  const handleCategoryChange = (catId: string) => {
+    const cat = CHAMBER_CATEGORIES.find((c) => c.id === catId) || CHAMBER_CATEGORIES[0];
+    setNewRoomTypeId(cat.id);
+    if (!editingRoom || newRoomPrice === '6500' || newRoomPrice === '4500') {
+      setNewRoomPrice(String(cat.defaultPrice));
+    }
+    if (!editingRoom || newRoomBedType === 'Plush King Bed' || newRoomBedType === 'Classic Double Bed') {
+      setNewRoomBedType(cat.defaultBed);
+    }
+    if (!editingRoom) {
+      setNewRoomAmenities([...cat.defaultAmenities]);
+      setNewRoomDescription(cat.defaultDesc);
+    }
+  };
+
+  const toggleAmenity = (amenity: string) => {
+    setNewRoomAmenities((prev) =>
+      prev.includes(amenity) ? prev.filter((a) => a !== amenity) : [...prev, amenity]
+    );
+  };
+
+  const handleAddCustomAmenity = () => {
+    const trimmed = customAmenity.trim();
+    if (!trimmed) return;
+    if (!newRoomAmenities.includes(trimmed)) {
+      setNewRoomAmenities((prev) => [...prev, trimmed]);
+    }
+    setCustomAmenity('');
+  };
+
+  const handleSaveRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRoomNumber.trim()) return;
 
@@ -287,25 +432,32 @@ export default function RoomsHousekeepingPage() {
     setActionError(null);
 
     const cleanNum = newRoomNumber.trim().replace(/^(room|chamber)\s*/i, '');
-    const isNonDeluxe = newRoomTypeId === 'd0000000-0000-0000-0000-000000000002';
-    const targetTypeId = isNonDeluxe ? 'd0000000-0000-0000-0000-000000000002' : 'd0000000-0000-0000-0000-000000000001';
-    const matchedType =
-      roomTypes.find((rt) => rt.id === targetTypeId) ||
-      (isNonDeluxe
-        ? roomTypes.find((rt) => rt.name.toLowerCase().includes('non')) || roomTypes[1]
-        : roomTypes.find((rt) => !rt.name.toLowerCase().includes('non')) || roomTypes[0]);
+    const cat = CHAMBER_CATEGORIES.find((c) => c.id === newRoomTypeId) || CHAMBER_CATEGORIES[0];
+    const parsedPrice = Math.max(100, Number(newRoomPrice) || cat.defaultPrice);
+    const parsedCap = Math.max(1, Number(newRoomCapacity) || 2);
+
+    const payload = {
+      ...(editingRoom ? { id: editingRoom.id } : {}),
+      room_number: cleanNum,
+      room_type_id: cat.id,
+      room_category: cat.name,
+      price_per_night: parsedPrice,
+      base_rate_minor: parsedPrice * 100,
+      capacity: parsedCap,
+      bed_type: newRoomBedType.trim() || cat.defaultBed,
+      housekeeping_state: newRoomState,
+      amenities: newRoomAmenities,
+      description: newRoomDescription.trim() || cat.defaultDesc,
+      notes: newRoomNotes.trim() || null,
+      images: newRoomImages,
+      photos: newRoomImages,
+    };
 
     try {
       const res = await fetch('/api/rooms', {
-        method: 'POST',
+        method: editingRoom ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          room_number: cleanNum,
-          room_type_id: targetTypeId,
-          housekeeping_state: newRoomState,
-          notes: newRoomNotes || null,
-          images: newRoomImages,
-        }),
+        body: JSON.stringify(payload),
       });
 
       let savedRoom: Room;
@@ -313,19 +465,21 @@ export default function RoomsHousekeepingPage() {
         const data = await res.json();
         savedRoom = data.room;
       } else {
-        savedRoom = dataRepository.addRoom({
-          room_number: cleanNum,
-          room_type_id: targetTypeId,
-          housekeeping_state: newRoomState,
-          notes: newRoomNotes || null,
-          images: newRoomImages,
-        });
-        savedRoom.room_type = matchedType;
+        if (editingRoom) {
+          savedRoom = {
+            ...editingRoom,
+            ...payload,
+          } as Room;
+          dataRepository.updateRoom(editingRoom.id, savedRoom);
+        } else {
+          savedRoom = dataRepository.addRoom(payload);
+        }
       }
 
-      // Optimistic update
       setRooms((prev) => {
-        const updated = [savedRoom, ...prev.filter((r) => r.id !== savedRoom.id && r.room_number !== cleanNum)];
+        const updated = editingRoom
+          ? prev.map((r) => (r.id === editingRoom.id ? savedRoom : r))
+          : [savedRoom, ...prev.filter((r) => r.id !== savedRoom.id && r.room_number !== cleanNum)];
         if (typeof window !== 'undefined') {
           localStorage.setItem('rajmahal_rooms', JSON.stringify(updated));
         }
@@ -333,12 +487,18 @@ export default function RoomsHousekeepingPage() {
       });
 
       setIsAddModalOpen(false);
+      setEditingRoom(null);
       setNewRoomNumber('');
       setNewRoomNotes('');
       setNewRoomImages([]);
+      showToast(
+        editingRoom
+          ? `Room ${cleanNum} updated & saved in Firestore!`
+          : `Room ${cleanNum} added to palace inventory!`
+      );
       fetchRoomsData();
     } catch (err: any) {
-      console.error('Error creating room:', err);
+      console.error('Error saving room:', err);
       setActionError(err.message || 'Failed to save chamber');
     } finally {
       setIsSubmitting(false);
@@ -351,7 +511,9 @@ export default function RoomsHousekeepingPage() {
       const matchesSearch =
         !q ||
         r.room_number.toLowerCase().includes(q) ||
-        (r.room_type?.name && r.room_type.name.toLowerCase().includes(q));
+        (r.room_type?.name && r.room_type.name.toLowerCase().includes(q)) ||
+        (r.room_category && r.room_category.toLowerCase().includes(q)) ||
+        (r.bed_type && r.bed_type.toLowerCase().includes(q));
       const matchesFilter = filterState === 'all' || r.housekeeping_state === filterState;
       return matchesSearch && matchesFilter;
     });
@@ -366,6 +528,23 @@ export default function RoomsHousekeepingPage() {
 
   return (
     <div className="space-y-4">
+      {/* ── Success Toast ── */}
+      {successToast && (
+        <div className="p-3 rounded-xl bg-[#2E7D32]/10 border border-[#2E7D32]/30 text-[#2E7D32] text-xs font-bold flex items-center justify-between shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>{successToast}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSuccessToast(null)}
+            className="text-[#2E7D32] hover:opacity-75 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-[#E8DCD2]">
         <div>
@@ -376,21 +555,21 @@ export default function RoomsHousekeepingPage() {
             Chambers &amp; Room Availability
           </h1>
           <p className="text-xs text-[#81736D] mt-0.5">
-            Real-time palace chamber status, housekeeping state management, and suite allocations
+            Real-time palace chamber status, pricing, amenities, photos, and housekeeping state management
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           <button
             onClick={fetchRoomsData}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E8DCD2] bg-white text-[#4F0809] hover:bg-[#F6EAE0] text-xs font-medium shadow-xs transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E8DCD2] bg-white text-[#4F0809] hover:bg-[#F6EAE0] text-xs font-medium shadow-xs transition cursor-pointer"
           >
-            <RotateCw className="w-3.5 h-3.5" />
+            <RotateCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
           <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#4F0809] hover:bg-[#6B1518] text-white text-xs font-semibold shadow-xs transition"
+            onClick={openAddModal}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#4F0809] hover:bg-[#6B1518] text-white text-xs font-semibold shadow-xs transition cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5 text-[#D8AA67]" />
             Add Chamber
@@ -494,7 +673,7 @@ export default function RoomsHousekeepingPage() {
                 : 'No rooms match the current search or filter criteria.'}
             </p>
             <button
-              onClick={() => setIsAddModalOpen(true)}
+              onClick={openAddModal}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#4F0809] hover:bg-[#6B1518] text-white text-xs font-semibold shadow-xs transition cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5 text-[#D8AA67]" />
@@ -506,7 +685,6 @@ export default function RoomsHousekeepingPage() {
             const isOcc = room.housekeeping_state === 'occupied';
             const isAvail = room.housekeeping_state === 'available';
             const isClean = room.housekeeping_state === 'cleaning';
-            const isDirty = room.housekeeping_state === 'dirty';
             const roomImg =
               (room.images && room.images.length > 0)
                 ? room.images[0]
@@ -531,7 +709,11 @@ export default function RoomsHousekeepingPage() {
               >
                 <div>
                   {/* Chamber Photo Thumbnail */}
-                  <div className="relative w-full h-24 rounded-lg overflow-hidden mb-2 bg-[#F5ECDC] group">
+                  <div
+                    onClick={() => openEditModal(room)}
+                    className="relative w-full h-24 rounded-lg overflow-hidden mb-2 bg-[#F5ECDC] group cursor-pointer"
+                    title="Click to Edit Chamber"
+                  >
                     <img
                       src={roomImg}
                       alt={`Room ${room.room_number}`}
@@ -555,7 +737,7 @@ export default function RoomsHousekeepingPage() {
                     >
                       Room {room.room_number}
                     </span>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       <span
                         className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
                           isOcc
@@ -569,6 +751,14 @@ export default function RoomsHousekeepingPage() {
                       >
                         {room.housekeeping_state}
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(room)}
+                        title="Edit Chamber Details"
+                        className="p-1 text-[#8F6628] hover:text-[#4F0809] hover:bg-[#F5ECDC] rounded transition cursor-pointer"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleDeleteRoom(room.id, room.room_number)}
@@ -588,19 +778,20 @@ export default function RoomsHousekeepingPage() {
                       ₹{((room.base_rate_minor || room.room_type?.base_rate_minor || 650000) / 100).toLocaleString('en-IN')}/nt
                     </span>
                   </div>
-                  {room.bed_type && (
-                    <div className="text-[9px] text-[#81736D] truncate mb-2">
-                      {room.bed_type}
-                    </div>
-                  )}
+                  <div className="text-[9px] text-[#81736D] flex items-center justify-between truncate mb-2">
+                    <span className="truncate">{room.bed_type || 'King Bed'}</span>
+                    <span className="shrink-0 text-[#8F6628] font-medium">
+                      {room.capacity || 2}G • {(room.amenities || room.room_type?.amenities || []).length} Amenities
+                    </span>
+                  </div>
                 </div>
 
-                {/* Quick Actions Dropdown */}
+                {/* Quick Actions: Status Dropdown + Edit Button */}
                 <div className="pt-2 border-t border-[#E8DCD2] flex items-center justify-between gap-1.5">
                   <select
                     value={room.housekeeping_state}
                     onChange={(e) => handleStateChange(room.id, e.target.value as any)}
-                    className="w-full text-[10px] py-1 px-1.5 rounded border border-[#E8DCD2] bg-[#FBF6EF] text-[#302421] focus:ring-1 focus:ring-[#4F0809] focus:outline-none"
+                    className="flex-1 text-[10px] py-1 px-1.5 rounded-lg border border-[#E8DFCE] bg-[#F5ECDC] text-[#4F0809] font-semibold focus:ring-1 focus:ring-[#4F0809] focus:outline-none cursor-pointer"
                   >
                     <option value="available">Available</option>
                     <option value="occupied">Occupied</option>
@@ -608,6 +799,15 @@ export default function RoomsHousekeepingPage() {
                     <option value="dirty">Dirty</option>
                     <option value="maintenance">Maintenance</option>
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => openEditModal(room)}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[#F5ECDC] hover:bg-[#4F0809] text-[#4F0809] hover:text-[#FDF8EE] border border-[#D8AA67]/50 text-[10px] font-bold transition cursor-pointer shrink-0"
+                    title="Edit Chamber Details"
+                  >
+                    <Pencil className="w-2.5 h-2.5" />
+                    <span>Edit</span>
+                  </button>
                 </div>
               </div>
             );
@@ -615,16 +815,17 @@ export default function RoomsHousekeepingPage() {
         )}
       </div>
 
-      {/* ── Add Palace Chamber Modal (Royal Heritage Palace Theme) ── */}
+      {/* ── Add / Edit Palace Chamber Modal (Royal Heritage Palace Theme) ── */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-3xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden shadow-2xl relative text-[#4F0809] animate-fade-in">
+          <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-3xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden shadow-2xl relative text-[#4F0809] animate-fade-in">
             {/* Royal Maroon Header with Gold Ornaments */}
             <div className="bg-gradient-to-r from-[#4F0809] via-[#651012] to-[#4F0809] text-[#FFF8EB] p-5 relative border-b border-[#D8AA67]/40 shrink-0">
               <button
                 type="button"
                 onClick={() => {
                   setIsAddModalOpen(false);
+                  setEditingRoom(null);
                   setNewRoomImages([]);
                 }}
                 className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#D8AA67] flex items-center justify-center transition-colors cursor-pointer"
@@ -635,7 +836,7 @@ export default function RoomsHousekeepingPage() {
 
               <div className="flex items-center space-x-3.5">
                 <div className="w-11 h-11 rounded-2xl bg-[#D8AA67]/20 border border-[#D8AA67]/40 flex items-center justify-center shrink-0 text-[#D8AA67] shadow-inner">
-                  <BedDouble className="w-6 h-6" />
+                  {editingRoom ? <Pencil className="w-5 h-5" /> : <BedDouble className="w-6 h-6" />}
                 </div>
                 <div>
                   <div className="flex items-center gap-1.5 mb-0.5">
@@ -643,13 +844,15 @@ export default function RoomsHousekeepingPage() {
                       Palace Inventory
                     </span>
                     <span className="text-[#D8AA67] text-[8px]">&#9830;</span>
-                    <span className="text-[10px] text-[#FFF8EB]/80 font-medium">PMS Ledger</span>
+                    <span className="text-[10px] text-[#FFF8EB]/80 font-medium">
+                      {editingRoom ? `Editing Chamber № ${editingRoom.room_number}` : 'PMS Ledger'}
+                    </span>
                   </div>
                   <h2
                     className="text-2xl font-bold text-[#FFF8EB] leading-tight"
                     style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
                   >
-                    Add Palace Chamber
+                    {editingRoom ? `Edit Palace Chamber (Room ${editingRoom.room_number})` : 'Add Palace Chamber'}
                   </h2>
                 </div>
               </div>
@@ -663,7 +866,7 @@ export default function RoomsHousekeepingPage() {
               </div>
             )}
 
-            <form onSubmit={handleCreateRoom} className="p-5 sm:p-6 space-y-4 text-xs overflow-y-auto flex-1">
+            <form onSubmit={handleSaveRoom} className="p-5 sm:p-6 space-y-4 text-xs overflow-y-auto flex-1">
               {/* Chamber Number */}
               <div>
                 <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
@@ -702,7 +905,7 @@ export default function RoomsHousekeepingPage() {
                       <button
                         key={cat.id}
                         type="button"
-                        onClick={() => setNewRoomTypeId(cat.id)}
+                        onClick={() => handleCategoryChange(cat.id)}
                         className={`p-3.5 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
                           isSelected
                             ? 'border-[#4F0809] bg-[#4F0809] text-[#FFF8EB] shadow-md ring-1 ring-[#D8AA67]'
@@ -727,17 +930,73 @@ export default function RoomsHousekeepingPage() {
                 </div>
               </div>
 
-              {/* Initial State */}
+              {/* Price Per Night, Guest Capacity & Bed Type */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
+                    Price / Night (₹) *
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-[#9C7A45]">
+                      ₹
+                    </span>
+                    <input
+                      type="number"
+                      min="100"
+                      required
+                      value={newRoomPrice}
+                      onChange={(e) => setNewRoomPrice(e.target.value)}
+                      placeholder="6500"
+                      className="w-full h-11 pl-7 pr-3 text-xs sm:text-sm rounded-xl bg-[#F5ECDC] focus:bg-[#EFE2CC] border border-[#E8DFCE] focus:border-[#4F0809] focus:outline-none text-[#4F0809] font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
+                    Guest Capacity *
+                  </label>
+                  <div className="relative">
+                    <Users className="w-3.5 h-3.5 text-[#9C7A45] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="number"
+                      min="1"
+                      max="10"
+                      required
+                      value={newRoomCapacity}
+                      onChange={(e) => setNewRoomCapacity(e.target.value)}
+                      className="w-full h-11 pl-9 pr-3 text-xs sm:text-sm rounded-xl bg-[#F5ECDC] focus:bg-[#EFE2CC] border border-[#E8DFCE] focus:border-[#4F0809] focus:outline-none text-[#4F0809] font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
+                    Bed Configuration *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newRoomBedType}
+                    onChange={(e) => setNewRoomBedType(e.target.value)}
+                    placeholder="Plush King Bed"
+                    className="w-full h-11 px-3.5 text-xs sm:text-sm rounded-xl bg-[#F5ECDC] focus:bg-[#EFE2CC] border border-[#E8DFCE] focus:border-[#4F0809] focus:outline-none text-[#4F0809] font-semibold"
+                  />
+                </div>
+              </div>
+
+              {/* Chamber Housekeeping State */}
               <div>
                 <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
-                  Initial Chamber State *
+                  Chamber State *
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                   {[
                     { id: 'available', label: 'Available / Clean' },
                     { id: 'occupied', label: 'Occupied' },
-                    { id: 'cleaning', label: 'Cleaning In Progress' },
+                    { id: 'cleaning', label: 'Cleaning' },
                     { id: 'dirty', label: 'Needs Cleaning' },
+                    { id: 'maintenance', label: 'Maintenance' },
                   ].map((s) => {
                     const isSel = newRoomState === s.id;
                     return (
@@ -755,6 +1014,62 @@ export default function RoomsHousekeepingPage() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* Chamber Amenities (Toggleable + Custom Add) */}
+              <div className="p-3.5 rounded-2xl bg-[#F5ECDC]/60 border border-[#E8DFCE] space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] uppercase tracking-wider font-bold text-[#856B4D]">
+                    Chamber Amenities ({newRoomAmenities.length} Selected)
+                  </label>
+                  <span className="text-[10px] text-[#9C7A45] font-medium">
+                    Click to toggle amenities
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {Array.from(new Set([...PRESET_AMENITIES, ...newRoomAmenities])).map((am) => {
+                    const isIncluded = newRoomAmenities.includes(am);
+                    return (
+                      <button
+                        key={am}
+                        type="button"
+                        onClick={() => toggleAmenity(am)}
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border transition cursor-pointer flex items-center gap-1 ${
+                          isIncluded
+                            ? 'bg-[#4F0809] text-[#FDF8EE] border-[#4F0809] shadow-2xs'
+                            : 'bg-[#FDF8EE] text-[#856B4D] border-[#E8DFCE] hover:border-[#D8AA67]'
+                        }`}
+                      >
+                        {isIncluded && <Check className="w-2.5 h-2.5 text-[#D8AA67]" />}
+                        <span>{am}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex gap-1.5 pt-1">
+                  <input
+                    type="text"
+                    value={customAmenity}
+                    onChange={(e) => setCustomAmenity(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddCustomAmenity();
+                      }
+                    }}
+                    placeholder="Add custom amenity (e.g. Jharokha Seating, Jacuzzi)..."
+                    className="flex-1 h-8 px-3 rounded-lg bg-[#FDF8EE] border border-[#E8DFCE] text-xs text-[#4F0809] placeholder-[#856B4D]/60 focus:border-[#4F0809] focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddCustomAmenity}
+                    className="px-3 h-8 rounded-lg bg-[#D8AA67]/25 hover:bg-[#D8AA67]/40 border border-[#D8AA67]/60 text-[#4F0809] text-[11px] font-bold transition cursor-pointer"
+                  >
+                    + Add
+                  </button>
                 </div>
               </div>
 
@@ -917,18 +1232,32 @@ export default function RoomsHousekeepingPage() {
                 </div>
               </div>
 
-              {/* Chamber Amenities / Notes */}
-              <div>
-                <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
-                  Chamber Amenities / Balcony Notes (Optional)
-                </label>
-                <textarea
-                  rows={2}
-                  value={newRoomNotes}
-                  onChange={(e) => setNewRoomNotes(e.target.value)}
-                  placeholder="e.g. Palace courtyard garden view, deep marble bath, carved stone jharokha..."
-                  className="w-full p-3 rounded-xl bg-[#F5ECDC] focus:bg-[#EFE2CC] border border-[#E8DFCE] focus:border-[#4F0809] focus:outline-none text-[#4F0809] placeholder-[#856B4D]/50 text-xs resize-none"
-                />
+              {/* Chamber Description & Balcony Notes */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
+                    Chamber Description
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={newRoomDescription}
+                    onChange={(e) => setNewRoomDescription(e.target.value)}
+                    placeholder="Royal suite description for website & booking ledger..."
+                    className="w-full p-3 rounded-xl bg-[#F5ECDC] focus:bg-[#EFE2CC] border border-[#E8DFCE] focus:border-[#4F0809] focus:outline-none text-[#4F0809] placeholder-[#856B4D]/50 text-xs resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
+                    Balcony / Housekeeping Notes (Optional)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={newRoomNotes}
+                    onChange={(e) => setNewRoomNotes(e.target.value)}
+                    placeholder="e.g. Palace courtyard garden view, deep marble bath, carved stone jharokha..."
+                    className="w-full p-3 rounded-xl bg-[#F5ECDC] focus:bg-[#EFE2CC] border border-[#E8DFCE] focus:border-[#4F0809] focus:outline-none text-[#4F0809] placeholder-[#856B4D]/50 text-xs resize-none"
+                  />
+                </div>
               </div>
 
               {/* Actions Footer */}
@@ -937,6 +1266,7 @@ export default function RoomsHousekeepingPage() {
                   type="button"
                   onClick={() => {
                     setIsAddModalOpen(false);
+                    setEditingRoom(null);
                     setNewRoomImages([]);
                   }}
                   className="px-4 py-2.5 rounded-xl bg-[#F5ECDC] hover:bg-[#EFE2CC] text-[#4F0809] text-xs font-bold transition cursor-pointer"
@@ -951,12 +1281,12 @@ export default function RoomsHousekeepingPage() {
                   {isSubmitting ? (
                     <>
                       <RotateCw className="w-3.5 h-3.5 animate-spin text-[#D8AA67]" />
-                      <span>Saving Chamber...</span>
+                      <span>{editingRoom ? 'Updating Chamber...' : 'Saving Chamber...'}</span>
                     </>
                   ) : (
                     <>
                       <CheckCircle2 className="w-4 h-4 text-[#D8AA67]" />
-                      <span>Save Chamber</span>
+                      <span>{editingRoom ? 'Update Chamber' : 'Save Chamber'}</span>
                     </>
                   )}
                 </button>

@@ -72,92 +72,112 @@ export async function GET() {
   }
 }
 
+function buildRoomPayload(body: any, roomId: string): Room {
+  const {
+    room_number,
+    room_type_id,
+    room_category,
+    housekeeping_state,
+    notes,
+    images,
+    photos,
+    price_per_night,
+    base_rate_minor,
+    capacity,
+    bed_type,
+    amenities,
+    description,
+  } = body;
+
+  const roomTypes = dataRepository.getRoomTypes();
+  let matchedType = roomTypes.find(
+    (rt) =>
+      rt.id === room_type_id ||
+      (room_type_id === 'deluxe' && rt.name.toLowerCase().includes('deluxe') && !rt.name.toLowerCase().includes('non')) ||
+      (room_type_id === 'non-deluxe' && rt.name.toLowerCase().includes('non')) ||
+      (room_category && rt.name.toLowerCase() === String(room_category).toLowerCase())
+  );
+  if (!matchedType) {
+    matchedType = roomTypes[0];
+  }
+
+  const isNonDeluxe =
+    matchedType.id === 'd0000000-0000-0000-0000-000000000002' ||
+    matchedType.name.toLowerCase().includes('non');
+
+  const cleanNumber = String(room_number || '').replace(/^(room|chamber)\s*/i, '').trim();
+  const resolvedPricePerNight =
+    typeof price_per_night === 'number' && price_per_night > 0
+      ? price_per_night
+      : typeof base_rate_minor === 'number' && base_rate_minor > 0
+      ? Math.round(base_rate_minor / 100)
+      : Math.round(matchedType.base_rate_minor / 100);
+  const resolvedBaseRateMinor = resolvedPricePerNight * 100;
+  const resolvedCapacity = Number(capacity) > 0 ? Number(capacity) : matchedType.capacity;
+  const resolvedBedType = bed_type?.trim() || (isNonDeluxe ? 'Classic Double Bed' : 'Plush King Bed');
+  const resolvedAmenities: string[] = Array.isArray(amenities) ? amenities : matchedType.amenities;
+  const resolvedDescription = description !== undefined ? description : matchedType.description;
+  const categoryName = room_category || matchedType.name;
+
+  const inputImages: string[] =
+    Array.isArray(images) && images.length > 0
+      ? images
+      : Array.isArray(photos) && photos.length > 0
+      ? photos
+      : matchedType.photos
+      ? [...matchedType.photos]
+      : [];
+
+  return {
+    id: roomId,
+    room_number: cleanNumber,
+    room_type_id: matchedType.id,
+    room_category: categoryName,
+    room_type_name: categoryName,
+    category_badge: isNonDeluxe ? 'HERITAGE STANDARD' : 'ROYAL LUXURY',
+    base_rate_minor: resolvedBaseRateMinor,
+    price_per_night: resolvedPricePerNight,
+    capacity: resolvedCapacity,
+    bed_type: resolvedBedType,
+    amenities: resolvedAmenities,
+    description: resolvedDescription,
+    housekeeping_state: housekeeping_state || 'available',
+    notes: notes !== undefined ? notes : null,
+    images: inputImages,
+    photos: inputImages,
+    room_type: {
+      id: matchedType.id,
+      property_id: matchedType.property_id || 'd0000000-0000-0000-0000-000000000001',
+      name: categoryName,
+      description: resolvedDescription,
+      capacity: resolvedCapacity,
+      total_rooms: matchedType.total_rooms || 20,
+      base_rate_minor: resolvedBaseRateMinor,
+      amenities: resolvedAmenities,
+      photos: inputImages,
+      is_active: true,
+      created_at: new Date().toISOString(),
+    },
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { room_number, room_type_id, housekeeping_state, notes, images, photos } = body;
-
-    if (!room_number) {
+    if (!body.room_number) {
       return NextResponse.json(
         { success: false, error: 'room_number is required' },
         { status: 400 }
       );
     }
 
-    const roomTypes = dataRepository.getRoomTypes();
-    // Resolve type: if matching id or matching 'deluxe' / 'non-deluxe'
-    let matchedType = roomTypes.find(
-      (rt) =>
-        rt.id === room_type_id ||
-        (room_type_id === 'deluxe' && rt.name.toLowerCase().includes('deluxe') && !rt.name.toLowerCase().includes('non')) ||
-        (room_type_id === 'non-deluxe' && rt.name.toLowerCase().includes('non'))
-    );
-    if (!matchedType) {
-      matchedType = roomTypes[0];
-    }
-
-    const isNonDeluxe =
-      matchedType.id === 'd0000000-0000-0000-0000-000000000002' ||
-      matchedType.name.toLowerCase().includes('non');
-
     const roomId = `room-${Date.now()}`;
-    const cleanNumber = String(room_number).replace(/^(room|chamber)\s*/i, '').trim();
-
-    const inputImages: string[] = Array.isArray(images) && images.length > 0
-      ? images
-      : (Array.isArray(photos) && photos.length > 0 ? photos : (matchedType.photos ? [...matchedType.photos] : []));
-
-    const roomData: Room = {
-      id: roomId,
-      room_number: cleanNumber,
-      room_type_id: matchedType.id,
-      room_category: matchedType.name,
-      room_type_name: matchedType.name,
-      category_badge: isNonDeluxe ? 'HERITAGE STANDARD' : 'ROYAL LUXURY',
-      base_rate_minor: matchedType.base_rate_minor,
-      price_per_night: Math.round(matchedType.base_rate_minor / 100),
-      capacity: matchedType.capacity,
-      bed_type: isNonDeluxe ? 'Classic Double Bed' : 'Plush King Bed',
-      amenities: matchedType.amenities,
-      description: matchedType.description,
-      housekeeping_state: housekeeping_state || 'available',
-      notes: notes || null,
-      images: inputImages,
-      photos: inputImages,
-      room_type: {
-        id: matchedType.id,
-        property_id: matchedType.property_id || 'd0000000-0000-0000-0000-000000000001',
-        name: matchedType.name,
-        description: matchedType.description,
-        capacity: matchedType.capacity,
-        total_rooms: matchedType.total_rooms || 20,
-        base_rate_minor: matchedType.base_rate_minor,
-        amenities: matchedType.amenities,
-        photos: inputImages,
-        is_active: true,
-        created_at: new Date().toISOString(),
-      },
-    };
+    const roomData = buildRoomPayload(body, roomId);
 
     // Save to Firestore rooms collection with ALL details embedded directly
     try {
       await setDoc(doc(db, 'rooms', roomId), {
-        id: roomId,
-        room_number: cleanNumber,
-        room_type_id: matchedType.id,
-        room_category: matchedType.name,
-        room_type_name: matchedType.name,
-        category_badge: isNonDeluxe ? 'HERITAGE STANDARD' : 'ROYAL LUXURY',
-        base_rate_minor: matchedType.base_rate_minor,
-        price_per_night: Math.round(matchedType.base_rate_minor / 100),
-        capacity: matchedType.capacity,
-        bed_type: isNonDeluxe ? 'Classic Double Bed' : 'Plush King Bed',
-        amenities: matchedType.amenities,
-        description: matchedType.description,
-        housekeeping_state: housekeeping_state || 'available',
-        notes: notes || null,
-        images: inputImages,
-        photos: inputImages,
+        ...roomData,
         created_at: serverTimestamp(),
         updated_at: serverTimestamp(),
       });
@@ -170,6 +190,40 @@ export async function POST(request: Request) {
     addedLocal.id = roomId;
 
     return NextResponse.json({ success: true, room: roomData }, { status: 201 });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const body = await request.json();
+    const { id } = body;
+    if (!id) {
+      return NextResponse.json({ success: false, error: 'Room id is required' }, { status: 400 });
+    }
+    if (!body.room_number) {
+      return NextResponse.json({ success: false, error: 'room_number is required' }, { status: 400 });
+    }
+
+    const updatedRoom = buildRoomPayload(body, id);
+
+    // Update Firestore rooms doc with merge so any custom/new fields are persisted
+    try {
+      await setDoc(
+        doc(db, 'rooms', id),
+        {
+          ...updatedRoom,
+          updated_at: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.warn('Firestore PUT /api/rooms fallback to memory:', err);
+    }
+
+    dataRepository.updateRoom(id, updatedRoom);
+    return NextResponse.json({ success: true, room: updatedRoom });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

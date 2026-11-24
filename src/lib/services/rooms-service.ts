@@ -143,6 +143,23 @@ export const roomsService = {
     }
   },
 
+  async updateRoom(roomId: string, patch: Partial<Room>): Promise<Room | null> {
+    try {
+      const docRef = doc(db, 'rooms', roomId);
+      await setDoc(
+        docRef,
+        {
+          ...patch,
+          updated_at: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.warn('Firestore updateRoom fallback:', err);
+    }
+    return dataRepository.updateRoom(roomId, patch);
+  },
+
   async updateRoomHousekeeping(roomId: string, state: HousekeepingState): Promise<Room | null> {
     try {
       const docRef = doc(db, 'rooms', roomId);

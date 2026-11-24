@@ -200,6 +200,12 @@ export const dataRepository = {
     roomsState.push(newRoom);
     return newRoom;
   },
+  updateRoom(roomId: string, patch: Partial<Room>): Room | null {
+    const idx = roomsState.findIndex((r) => r.id === roomId);
+    if (idx === -1) return null;
+    roomsState[idx] = { ...roomsState[idx], ...patch };
+    return roomsState[idx];
+  },
   deleteRoom(roomId: string): boolean {
     const prevLen = roomsState.length;
     roomsState = roomsState.filter((r) => r.id !== roomId);
