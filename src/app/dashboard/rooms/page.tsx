@@ -544,9 +544,9 @@ export default function RoomsHousekeepingPage() {
       {/* ── Add Palace Chamber Modal (Royal Heritage Palace Theme) ── */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl relative text-[#4F0809] animate-fade-in">
+          <div className="bg-[#FDF8EE] border border-[#E8DFCE] rounded-3xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden shadow-2xl relative text-[#4F0809] animate-fade-in">
             {/* Royal Maroon Header with Gold Ornaments */}
-            <div className="bg-gradient-to-r from-[#4F0809] via-[#651012] to-[#4F0809] text-[#FFF8EB] p-5 relative border-b border-[#D8AA67]/40">
+            <div className="bg-gradient-to-r from-[#4F0809] via-[#651012] to-[#4F0809] text-[#FFF8EB] p-5 relative border-b border-[#D8AA67]/40 shrink-0">
               <button
                 type="button"
                 onClick={() => {
@@ -583,13 +583,13 @@ export default function RoomsHousekeepingPage() {
 
             {/* Error prompt */}
             {actionError && (
-              <div className="m-4 p-3 rounded-xl bg-red-100 text-red-900 text-xs flex items-center space-x-2 border border-red-300">
+              <div className="m-4 p-3 rounded-xl bg-red-100 text-red-900 text-xs flex items-center space-x-2 border border-red-300 shrink-0">
                 <AlertCircle className="w-4 h-4 shrink-0 text-red-700" />
                 <span>{actionError}</span>
               </div>
             )}
 
-            <form onSubmit={handleCreateRoom} className="p-5 sm:p-6 space-y-4 text-xs">
+            <form onSubmit={handleCreateRoom} className="p-5 sm:p-6 space-y-4 text-xs overflow-y-auto flex-1">
               {/* Chamber Number */}
               <div>
                 <label className="block text-[11px] uppercase tracking-wider font-bold text-[#856B4D] mb-1.5">
