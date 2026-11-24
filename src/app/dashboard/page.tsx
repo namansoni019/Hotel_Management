@@ -28,6 +28,80 @@ import { db } from '@/lib/firebase';
 import { dataRepository } from '@/lib/data/repository';
 import type { Order, Reservation, TableReservation, Room, InventoryItem } from '@/lib/types';
 
+function getOrderTimestamp(created_at: any): number {
+  if (!created_at) return 0;
+  if (typeof created_at === 'object' && typeof created_at.seconds === 'number') {
+    return created_at.seconds * 1000;
+  }
+  if (typeof created_at?.toDate === 'function') {
+    return created_at.toDate().getTime();
+  }
+  const t = new Date(created_at).getTime();
+  return isNaN(t) ? 0 : t;
+}
+
+function formatOrderTime(created_at: any): string {
+  const t = getOrderTimestamp(created_at);
+  if (!t) return 'Recently';
+  return new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+}
+
+function getOrderSource(ord: any): { label: string; dotClass: string } {
+  const rawType = (ord.order_type || ord.fulfilment_mode || ord.channel || '').toLowerCase();
+  
+  if (rawType.includes('room') || ord.room_number || ord.channel === 'room_service') {
+    return { label: 'Room Service', dotClass: 'bg-[#E8C56A]' };
+  }
+  if (rawType.includes('pickup') || rawType.includes('takeaway') || ord.fulfilment_mode === 'pickup') {
+    return { label: 'Pickup', dotClass: 'bg-[#2A2523]' };
+  }
+  if (rawType.includes('delivery') || ord.fulfilment_mode === 'delivery') {
+    return { label: 'Online Delivery', dotClass: 'bg-[#6B1518]' };
+  }
+  return { label: 'Dine-in', dotClass: 'bg-[#8F6E28]' };
+}
+
+function getOrderLocation(order: any): string {
+  if (order.room_number) {
+    const val = String(order.room_number).trim();
+    return val.toLowerCase().startsWith('room') || val.toLowerCase().startsWith('suite')
+      ? val
+      : `Room ${val}`;
+  }
+  if (order.table_number) {
+    const val = String(order.table_number).trim();
+    return val.toLowerCase().startsWith('table') ? val : `Table ${val}`;
+  }
+  if (order.table?.table_number) {
+    const val = String(order.table.table_number).trim();
+    return val.toLowerCase().startsWith('table') ? val : `Table ${val}`;
+  }
+  if (order.table_id && String(order.table_id).trim()) {
+    const val = String(order.table_id).trim();
+    const lower = val.toLowerCase();
+    if (lower.startsWith('room') || lower.startsWith('suite') || lower.startsWith('table') || lower.startsWith('t-')) {
+      return val;
+    }
+    return `Table ${val}`;
+  }
+  if (order.delivery_notes) {
+    const match = String(order.delivery_notes).match(/(?:Table\/Room|Table|Room|Suite)\s*:\s*([^\n,]+)/i);
+    if (match && match[1]) {
+      const extracted = match[1].trim();
+      if (extracted.toLowerCase().startsWith('room') || extracted.toLowerCase().startsWith('table')) {
+        return extracted;
+      }
+      return `Table ${extracted}`;
+    }
+  }
+  const mode = (order.order_type || order.fulfilment_mode || '').toLowerCase();
+  if (mode === 'delivery') return 'Online Delivery';
+  if (mode === 'room_service') return 'Room Service';
+  if (mode === 'dine_in') return 'Table T-01';
+  if (mode === 'pickup') return 'Counter Pickup';
+  return 'Table T-01';
+}
+
 export default function AdminDashboardPage() {
   const [activeTab, setActiveTab] = useState<'orders' | 'bookings' | 'reservations'>('orders');
   const [searchQuery, setSearchQuery] = useState('');
@@ -69,18 +143,35 @@ export default function AdminDashboardPage() {
       }
     }
 
+    // Initial fetch from /api/orders
+    fetch('/api/orders')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.orders && Array.isArray(data.orders) && data.orders.length > 0) {
+          const list = [...data.orders];
+          list.sort((a, b) => getOrderTimestamp(b.created_at) - getOrderTimestamp(a.created_at));
+          setOrders(list);
+        }
+      })
+      .catch(() => {});
+
     // 1. Real-time orders listener
     const unsubOrders = onSnapshot(
       collection(db, 'orders'),
       (snap) => {
         if (!snap.empty) {
           const list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Order[];
-          list.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+          list.sort((a, b) => getOrderTimestamp(b.created_at) - getOrderTimestamp(a.created_at));
           setOrders(list);
+        } else {
+          setOrders(dataRepository.getOrders());
         }
         setIsLiveConnected(true);
       },
-      (err) => console.warn('Real-time orders listener:', err)
+      (err) => {
+        console.warn('Real-time orders listener:', err);
+        setOrders(dataRepository.getOrders());
+      }
     );
 
     // 2. Real-time reservations listener
@@ -150,12 +241,12 @@ export default function AdminDashboardPage() {
   const occupancyPercent = totalRoomsCount > 0 ? Math.round((occupiedRoomsCount / totalRoomsCount) * 100) : 0;
 
   const activeOrdersCount = orders.filter((o) => o.status !== 'completed' && o.status !== 'cancelled').length;
-  const onlineCount = orders.filter((o) => o.fulfilment_mode === 'delivery').length;
-  const diningCount = orders.filter((o) => o.channel === 'qr_dine_in' || (o.fulfilment_mode === 'dine_in' && o.channel !== 'room_service')).length;
-  const roomCount = orders.filter((o) => o.channel === 'room_service').length;
-  const pickupCount = orders.filter((o) => o.fulfilment_mode === 'pickup').length;
+  const onlineCount = orders.filter((o) => getOrderSource(o).label === 'Online Delivery').length;
+  const diningCount = orders.filter((o) => getOrderSource(o).label === 'Dine-in').length;
+  const roomCount = orders.filter((o) => getOrderSource(o).label === 'Room Service').length;
+  const pickupCount = orders.filter((o) => getOrderSource(o).label === 'Pickup').length;
 
-  const todayRevenueMinor = orders.reduce((sum, o) => sum + (o.total_minor || 0), 0);
+  const todayRevenueMinor = orders.reduce((sum, o) => sum + (o.total_amount_minor || o.total_minor || 0), 0);
   const todayRevenueFormatted = (todayRevenueMinor / 100).toLocaleString('en-IN');
 
   const lowStockItems = inventory.filter((i) => i.status === 'low_stock');
@@ -173,8 +264,9 @@ export default function AdminDashboardPage() {
       const q = searchQuery.toLowerCase();
       list = list.filter(
         (o) =>
-          o.order_number.toLowerCase().includes(q) ||
-          o.channel.toLowerCase().includes(q) ||
+          o.order_number?.toLowerCase().includes(q) ||
+          getOrderSource(o).label.toLowerCase().includes(q) ||
+          getOrderLocation(o).toLowerCase().includes(q) ||
           (o.delivery_name && o.delivery_name.toLowerCase().includes(q)) ||
           (o.pickup_name && o.pickup_name.toLowerCase().includes(q))
       );
@@ -831,48 +923,37 @@ export default function AdminDashboardPage() {
                   </tr>
                 ) : (
                   paginatedOrders.map((ord) => {
-                    const sourceLabel =
-                      ord.channel === 'qr_dine_in'
-                        ? 'Dine-in'
-                        : ord.channel === 'room_service'
-                        ? 'Room Service'
-                        : ord.channel === 'web' && ord.fulfilment_mode === 'pickup'
-                        ? 'Pickup'
-                        : 'Online Delivery';
+                    const sourceInfo = getOrderSource(ord);
+                    const sourceLabel = sourceInfo.label;
+                    const sourceDot = sourceInfo.dotClass;
 
-                    const sourceDot =
-                      sourceLabel === 'Dine-in'
-                        ? 'bg-[#8F6E28]'
-                        : sourceLabel === 'Room Service'
-                        ? 'bg-[#E8C56A]'
-                        : sourceLabel === 'Pickup'
-                        ? 'bg-[#2A2523]'
-                        : 'bg-[#6B1518]';
+                    const outletName = ord.outlet?.name || (ord.outlet_id === 'b0000000-0000-0000-0000-000000000002' ? 'Café' : 'Restaurant');
+                    const tableContext = getOrderLocation(ord);
 
-                    const outletName = ord.outlet_id === 'b0000000-0000-0000-0000-000000000002' ? 'Café' : 'Restaurant';
-
-                    const tableContext = ord.table_id
-                      ? 'T-05'
-                      : ord.delivery_address?.includes('Room')
-                      ? 'R-201'
-                      : ord.fulfilment_mode === 'pickup'
-                      ? 'Counter'
-                      : 'Online';
-
+                    const statusLower = (ord.status || '').toLowerCase();
                     const statusClass =
-                      ord.status === 'preparing'
+                      statusLower === 'preparing'
                         ? 'bg-[#FDF4E5] text-[#B7791F]'
-                        : ord.status === 'ready'
+                        : statusLower === 'ready'
                         ? 'bg-[#FDF0E6] text-[#C05621]'
-                        : ord.status === 'accepted'
+                        : statusLower === 'accepted'
                         ? 'bg-stone-100 text-stone-700'
+                        : statusLower === 'cancelled'
+                        ? 'bg-red-50 text-red-700'
                         : 'bg-[#EBF7EE] text-[#2E7D32]';
+
+                    const itemsList = ord.items || ord.order_lines || [];
+                    const itemsCount = itemsList.length > 0
+                      ? itemsList.reduce((sum: number, it: any) => sum + (it.quantity || 1), 0)
+                      : 2;
+
+                    const totalAmount = (ord.total_amount_minor || ord.total_minor || 0) / 100;
 
                     return (
                       <tr key={ord.id} className="hover:bg-[#FAF6EF]/60 transition-colors">
                         <td className="px-4 py-3 font-bold text-[#302421]">#{ord.order_number}</td>
                         <td className="px-4 py-3 text-stone-700">
-                          <span className="inline-flex items-center space-x-1.5">
+                          <span className="inline-flex items-center space-x-1.5 font-medium">
                             <span className={`w-2 h-2 rounded-full ${sourceDot}`} />
                             <span>{sourceLabel}</span>
                           </span>
@@ -883,17 +964,17 @@ export default function AdminDashboardPage() {
                             {tableContext}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-stone-600">{ord.order_lines?.length || 2} items</td>
+                        <td className="px-4 py-3 text-stone-600">{itemsCount} items</td>
                         <td className="px-4 py-3">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold capitalize ${statusClass}`}>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${statusClass}`}>
                             {ord.status}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-stone-500">
-                          {new Date(ord.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                        <td className="px-4 py-3 text-stone-500 font-medium">
+                          {formatOrderTime(ord.created_at)}
                         </td>
                         <td className="px-4 py-3 font-bold text-[#302421]">
-                          ₹ {(ord.total_minor / 100).toLocaleString('en-IN')}
+                          ₹ {totalAmount.toLocaleString('en-IN')}
                         </td>
                         <td className="px-4 py-3 text-center">
                           <button
@@ -1108,22 +1189,22 @@ export default function AdminDashboardPage() {
               <div className="grid grid-cols-2 gap-2 bg-[#FAF6EF] p-3 rounded-xl border border-[#E8DCD2]">
                 <div>
                   <span className="text-stone-500 block">Source / Channel</span>
-                  <span className="font-bold text-stone-800 capitalize">{selectedOrder.channel.replace('_', ' ')}</span>
+                  <span className="font-bold text-stone-800">{getOrderSource(selectedOrder).label}</span>
                 </div>
                 <div>
                   <span className="text-stone-500 block">Status</span>
-                  <span className="font-bold text-[#2E7D32] capitalize">{selectedOrder.status}</span>
+                  <span className="font-bold text-[#2E7D32] uppercase">{selectedOrder.status}</span>
                 </div>
                 <div>
-                  <span className="text-stone-500 block">Context</span>
+                  <span className="text-stone-500 block">Context / Location</span>
                   <span className="font-bold text-stone-800">
-                    {selectedOrder.delivery_address || selectedOrder.table?.table_number || 'Dine-in'}
+                    {getOrderLocation(selectedOrder)}
                   </span>
                 </div>
                 <div>
                   <span className="text-stone-500 block">Total Amount</span>
                   <span className="font-bold text-[#4F0809] text-sm">
-                    ₹ {(selectedOrder.total_minor / 100).toLocaleString('en-IN')}
+                    ₹ {(((selectedOrder.total_amount_minor || selectedOrder.total_minor || 0) / 100)).toLocaleString('en-IN')}
                   </span>
                 </div>
               </div>
@@ -1131,15 +1212,19 @@ export default function AdminDashboardPage() {
               <div>
                 <span className="font-bold text-stone-700 block mb-1.5">Order Items</span>
                 <div className="space-y-1.5 border border-[#E8DCD2] rounded-xl p-3">
-                  {selectedOrder.order_lines?.map((line) => (
-                    <div key={line.id} className="flex justify-between items-center text-xs">
-                      <span>{line.quantity}x {line.item_name_snapshot}</span>
-                      <span className="font-bold">₹ {(line.line_total_minor / 100).toLocaleString('en-IN')}</span>
+                  {(selectedOrder.items || selectedOrder.order_lines)?.map((line: any, idx: number) => (
+                    <div key={line.id || idx} className="flex justify-between items-center text-xs">
+                      <span>{line.quantity || 1}x {line.name || line.item_name_snapshot || line.item_name || 'Item'}</span>
+                      <span className="font-bold">
+                        ₹ {(((line.line_total_minor || line.price_minor || (line.price ? line.price * 100 : 0) || 0) * (line.quantity || 1)) / 100).toLocaleString('en-IN')}
+                      </span>
                     </div>
                   )) || (
                     <div className="flex justify-between items-center text-xs">
-                      <span>Royal Thali Feast</span>
-                      <span className="font-bold">₹ {(selectedOrder.total_minor / 100).toLocaleString('en-IN')}</span>
+                      <span>Dining Items</span>
+                      <span className="font-bold">
+                        ₹ {(((selectedOrder.total_amount_minor || selectedOrder.total_minor || 0) / 100)).toLocaleString('en-IN')}
+                      </span>
                     </div>
                   )}
                 </div>
