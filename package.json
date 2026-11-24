@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "sync:db": "tsx src/scripts/sync_firestore.ts"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",
