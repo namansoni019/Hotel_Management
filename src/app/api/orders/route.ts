@@ -7,7 +7,25 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const outletId = searchParams.get('outletId') || undefined;
-    const orders = await ordersService.getOrders(outletId);
+    const uid = searchParams.get('uid') || searchParams.get('userId') || undefined;
+    const idsParam = searchParams.get('ids');
+    const ids = idsParam ? idsParam.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+
+    let orders = await ordersService.getOrders(outletId, uid);
+
+    if (uid) {
+      orders = orders.filter((o) => (o as any).uid === uid || (o as any).user_id === uid);
+    }
+
+    if (ids && ids.length > 0) {
+      const allOrders = await ordersService.getOrders(outletId);
+      const matchedLocal = allOrders.filter((o) => ids.includes(o.id) || ids.includes(o.order_number));
+      const orderMap = new Map();
+      orders.forEach((o) => orderMap.set(o.id, o));
+      matchedLocal.forEach((o) => orderMap.set(o.id, o));
+      orders = Array.from(orderMap.values());
+    }
+
     return NextResponse.json({ success: true, orders });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -36,6 +54,7 @@ export async function POST(request: Request) {
       tax_minor,
       service_charge_minor,
       discount_minor,
+      round_off_minor,
       total_minor,
       payment_mode,
       payment_method,
@@ -68,7 +87,13 @@ export async function POST(request: Request) {
       }
     }
 
-    const effectivePaymentMode = payment_mode || 'upi';
+    const effectivePaymentMode =
+      payment_mode ||
+      (payment_method === 'cards'
+        ? 'card'
+        : payment_method === 'pay_on_delivery' || payment_method?.toLowerCase().includes('cash')
+        ? 'cash'
+        : 'upi');
     const effectivePaymentMethod = payment_method || (
       effectivePaymentMode === 'cash' ? 'Cash Counter' : effectivePaymentMode === 'card' ? 'Card' : 'UPI'
     );
@@ -99,9 +124,15 @@ export async function POST(request: Request) {
       tax_minor: tax_minor || 0,
       service_charge_minor: service_charge_minor || 0,
       discount_minor: discount_minor || 0,
+      round_off_minor: round_off_minor || 0,
       total_minor: total_minor || 0,
+      invoice_number: body.invoice_number || undefined,
       payment_mode: effectivePaymentMode,
-      payment_method: effectivePaymentMethod,
+      payment_method: body.payment_method || effectivePaymentMethod,
+      payment_status: body.payment_status || 'pending',
+      payment_id: body.payment_id || null,
+      uid: body.uid || body.user_id || null,
+      user_id: body.uid || body.user_id || null,
       order_lines: effectiveLines,
     });
 

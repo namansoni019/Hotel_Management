@@ -10,7 +10,12 @@ import { formatMoney } from '@/lib/utils/money';
 import {
   INITIAL_OUTLETS,
 } from '@/lib/data/initial-data';
-import type { MenuItem, MenuCategory } from '@/lib/types';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { buildCategoriesFromItems } from '@/lib/services/menu-service';
+import { billingService } from '@/lib/services/billing-service';
+import type { MenuItem, MenuCategory, BillingSettings } from '@/lib/types';
+import { DEFAULT_BILLING_SETTINGS } from '@/lib/types';
 import { ShoppingBag, Plus, Minus, Clock, MapPin, Truck, ArrowRight } from 'lucide-react';
 
 export default function DeliveryOrderPage() {
@@ -25,21 +30,52 @@ export default function DeliveryOrderPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [liveCategories, setLiveCategories] = useState<MenuCategory[] | null>(null);
 
-  // Load live menu items from Firestore via /api/menu
+  // Real-time Firestore synchronization for delivery menu
   React.useEffect(() => {
-    async function fetchMenu() {
-      try {
-        const res = await fetch('/api/menu');
-        if (res.ok) {
-          const data = await res.json();
-          setLiveCategories(data.categories || []);
-        }
-      } catch (err) {
-        console.error('Failed to load live menu:', err);
-        setLiveCategories([]);
+    let itemsList: MenuItem[] = [];
+    let catsList: Array<Partial<MenuCategory> & { id: string }> = [];
+
+    const updateState = () => {
+      const built = buildCategoriesFromItems(itemsList, catsList);
+      setLiveCategories(built);
+    };
+
+    const unsubItems = onSnapshot(
+      collection(db, 'menu_items'),
+      (snap) => {
+        itemsList = snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as MenuItem[];
+        updateState();
+      },
+      (err) => {
+        console.warn('Real-time delivery menu_items error:', err);
+        fetch('/api/menu')
+          .then((r) => r.json())
+          .then((data) => setLiveCategories(data.categories || []))
+          .catch(() => setLiveCategories([]));
       }
-    }
-    fetchMenu();
+    );
+
+    const unsubCats = onSnapshot(
+      collection(db, 'menu_categories'),
+      (snap) => {
+        catsList = snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as Array<Partial<MenuCategory> & { id: string }>;
+        updateState();
+      },
+      (err) => {
+        console.warn('Real-time delivery menu_categories error:', err);
+      }
+    );
+
+    return () => {
+      unsubItems();
+      unsubCats();
+    };
   }, []);
 
   const currentOutlet =
@@ -54,6 +90,7 @@ export default function DeliveryOrderPage() {
   }, [liveCategories, currentOutlet.type]);
 
   const addToCart = (item: MenuItem) => {
+    if (item.is_available === false) return;
     setCart((prev) => ({
       ...prev,
       [item.id]: {
@@ -78,11 +115,38 @@ export default function DeliveryOrderPage() {
     });
   };
 
+  const [billingSettings, setBillingSettings] = useState<BillingSettings>(DEFAULT_BILLING_SETTINGS);
+
+  React.useEffect(() => {
+    const unsub = billingService.subscribeBillingSettings((settings) => {
+      setBillingSettings(settings);
+    });
+    return () => unsub();
+  }, []);
+
   const cartList = Object.values(cart);
   const subtotalMinor = cartList.reduce((sum, ci) => sum + ci.item.price_minor * ci.quantity, 0);
-  const taxMinor = Math.round((subtotalMinor * currentOutlet.tax_rate_bps) / 10000);
-  const deliveryFeeMinor = currentOutlet.delivery_fee_minor;
-  const totalMinor = subtotalMinor + taxMinor + deliveryFeeMinor;
+
+  const billCalc = React.useMemo(() => {
+    return billingService.calculateOrderBill(subtotalMinor, 'delivery', billingSettings);
+  }, [subtotalMinor, billingSettings]);
+
+  const {
+    taxMinor,
+    deliveryFeeMinor,
+    isFreeDelivery,
+    packagingFeeMinor,
+    roundOffMinor,
+    totalMinor,
+    gstPercent,
+  } = billCalc;
+
+  const freeDeliveryThresholdMinor = (billingSettings.delivery_free_above || 500) * 100;
+  const deliveryAmountLeftMinor = Math.max(0, freeDeliveryThresholdMinor - subtotalMinor);
+  const deliveryProgressPercent = Math.min(
+    100,
+    Math.round((subtotalMinor / freeDeliveryThresholdMinor) * 100)
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,6 +194,8 @@ export default function DeliveryOrderPage() {
           subtotal_minor: subtotalMinor,
           tax_minor: taxMinor,
           delivery_fee_minor: deliveryFeeMinor,
+          packaging_fee_minor: packagingFeeMinor,
+          round_off_minor: roundOffMinor,
           total_minor: totalMinor,
           order_lines: orderLines,
         }),
@@ -224,7 +290,11 @@ export default function DeliveryOrderPage() {
                           </span>
                         </div>
 
-                        {qty === 0 ? (
+                        {item.is_available === false ? (
+                          <span className="text-[11px] font-bold text-[#856B4D] bg-[#E8DFCE] px-3 py-1.5 rounded-full uppercase tracking-wider shrink-0 cursor-not-allowed">
+                            Sold Out
+                          </span>
+                        ) : qty === 0 ? (
                           <Button
                             size="sm"
                             variant="outline"
@@ -271,6 +341,30 @@ export default function DeliveryOrderPage() {
                 </span>
               </div>
 
+              {/* Free Delivery Progress Banner */}
+              {cartList.length > 0 && (
+                <div className="p-3 rounded-xl bg-[#FAF6EE] border border-[#B08D57]/40 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <span className="text-[#670E10]">
+                      {deliveryAmountLeftMinor > 0 ? (
+                        <>Add <span className="text-[#8F7245]">{formatMoney(deliveryAmountLeftMinor)}</span> for FREE Delivery</>
+                      ) : (
+                        <span className="text-[#8F7245] font-bold">🎉 FREE Delivery Unlocked!</span>
+                      )}
+                    </span>
+                    <span className="text-[#8F7245] font-semibold">{deliveryProgressPercent}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-[#E8DFCE] rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        deliveryAmountLeftMinor === 0 ? 'bg-[#8F7245]' : 'bg-[#B08D57]'
+                      }`}
+                      style={{ width: `${deliveryProgressPercent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
               {cartList.length === 0 ? (
                 <div className="text-center py-8 text-[#6B6155] space-y-2">
                   <p className="text-sm">Your delivery basket is currently empty.</p>
@@ -300,13 +394,36 @@ export default function DeliveryOrderPage() {
                       <span className="font-semibold text-[#241F1A]">{formatMoney(subtotalMinor)}</span>
                     </div>
                     <div className="flex justify-between text-[#6B6155]">
-                      <span>GST ({currentOutlet.tax_rate_bps / 100}%)</span>
+                      <span>GST ({gstPercent}%)</span>
                       <span className="font-semibold text-[#241F1A]">{formatMoney(taxMinor)}</span>
                     </div>
-                    <div className="flex justify-between text-[#6B6155]">
+                    <div className="flex justify-between text-[#6B6155] items-center">
                       <span>Delivery Fee</span>
-                      <span className="font-semibold text-[#241F1A]">{formatMoney(deliveryFeeMinor)}</span>
+                      {isFreeDelivery ? (
+                        <span className="font-semibold text-[#8F7245] flex items-center space-x-1.5">
+                          <span className="text-[10px] uppercase font-bold bg-[#B08D57]/20 text-[#670E10] border border-[#B08D57]/40 px-1.5 py-0.2 rounded">FREE</span>
+                          <span className="line-through text-xs font-normal text-[#856B4D]">
+                            {formatMoney((billingSettings.delivery_charges || 50) * 100)}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="font-semibold text-[#241F1A]">{formatMoney(deliveryFeeMinor)}</span>
+                      )}
                     </div>
+                    {packagingFeeMinor > 0 && (
+                      <div className="flex justify-between text-[#6B6155]">
+                        <span title={billingSettings.packaging_note}>Packaging Charges</span>
+                        <span className="font-semibold text-[#241F1A]">{formatMoney(packagingFeeMinor)}</span>
+                      </div>
+                    )}
+                    {roundOffMinor !== 0 && (
+                      <div className="flex justify-between text-[11px] text-[#6B6155]">
+                        <span>Round Off</span>
+                        <span className="font-semibold text-[#241F1A]">
+                          {roundOffMinor > 0 ? `+${formatMoney(roundOffMinor)}` : `-${formatMoney(Math.abs(roundOffMinor))}`}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-base font-bold text-[#241F1A] pt-2 border-t border-[#D4CBBB]">
                       <span>Total Amount</span>
                       <span className="font-heritage text-[#670E10] text-xl">{formatMoney(totalMinor)}</span>

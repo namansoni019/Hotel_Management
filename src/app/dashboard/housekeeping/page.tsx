@@ -65,10 +65,10 @@ export default function HousekeepingOperationsPage() {
         if (!snap.empty) {
           setReservations(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Reservation[]);
         } else {
-          setReservations(dataRepository.getReservations());
+          setReservations([]);
         }
       },
-      () => setReservations(dataRepository.getReservations())
+      () => setReservations([])
     );
 
     return () => {

@@ -10,7 +10,12 @@ import { formatMoney } from '@/lib/utils/money';
 import {
   INITIAL_OUTLETS,
 } from '@/lib/data/initial-data';
-import type { MenuItem, MenuCategory } from '@/lib/types';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { buildCategoriesFromItems } from '@/lib/services/menu-service';
+import { billingService } from '@/lib/services/billing-service';
+import type { MenuItem, MenuCategory, BillingSettings } from '@/lib/types';
+import { DEFAULT_BILLING_SETTINGS } from '@/lib/types';
 import { ShoppingBag, Plus, Minus, Clock, MapPin, ArrowRight } from 'lucide-react';
 
 export default function PickupOrderPage() {
@@ -24,21 +29,52 @@ export default function PickupOrderPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [liveCategories, setLiveCategories] = useState<MenuCategory[] | null>(null);
 
-  // Load live menu items from Firestore via /api/menu
+  // Real-time Firestore synchronization for pickup menu
   React.useEffect(() => {
-    async function fetchMenu() {
-      try {
-        const res = await fetch('/api/menu');
-        if (res.ok) {
-          const data = await res.json();
-          setLiveCategories(data.categories || []);
-        }
-      } catch (err) {
-        console.error('Failed to load live menu:', err);
-        setLiveCategories([]);
+    let itemsList: MenuItem[] = [];
+    let catsList: Array<Partial<MenuCategory> & { id: string }> = [];
+
+    const updateState = () => {
+      const built = buildCategoriesFromItems(itemsList, catsList);
+      setLiveCategories(built);
+    };
+
+    const unsubItems = onSnapshot(
+      collection(db, 'menu_items'),
+      (snap) => {
+        itemsList = snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as MenuItem[];
+        updateState();
+      },
+      (err) => {
+        console.warn('Real-time pickup menu_items error:', err);
+        fetch('/api/menu')
+          .then((r) => r.json())
+          .then((data) => setLiveCategories(data.categories || []))
+          .catch(() => setLiveCategories([]));
       }
-    }
-    fetchMenu();
+    );
+
+    const unsubCats = onSnapshot(
+      collection(db, 'menu_categories'),
+      (snap) => {
+        catsList = snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as Array<Partial<MenuCategory> & { id: string }>;
+        updateState();
+      },
+      (err) => {
+        console.warn('Real-time pickup menu_categories error:', err);
+      }
+    );
+
+    return () => {
+      unsubItems();
+      unsubCats();
+    };
   }, []);
 
   const currentOutlet =
@@ -53,6 +89,7 @@ export default function PickupOrderPage() {
   }, [liveCategories, currentOutlet.type]);
 
   const addToCart = (item: MenuItem) => {
+    if (item.is_available === false) return;
     setCart((prev) => ({
       ...prev,
       [item.id]: {
@@ -77,10 +114,29 @@ export default function PickupOrderPage() {
     });
   };
 
+  const [billingSettings, setBillingSettings] = useState<BillingSettings>(DEFAULT_BILLING_SETTINGS);
+
+  React.useEffect(() => {
+    const unsub = billingService.subscribeBillingSettings((settings) => {
+      setBillingSettings(settings);
+    });
+    return () => unsub();
+  }, []);
+
   const cartList = Object.values(cart);
   const subtotalMinor = cartList.reduce((sum, ci) => sum + ci.item.price_minor * ci.quantity, 0);
-  const taxMinor = Math.round((subtotalMinor * currentOutlet.tax_rate_bps) / 10000);
-  const totalMinor = subtotalMinor + taxMinor;
+
+  const billCalc = React.useMemo(() => {
+    return billingService.calculateOrderBill(subtotalMinor, 'pickup', billingSettings);
+  }, [subtotalMinor, billingSettings]);
+
+  const {
+    taxMinor,
+    packagingFeeMinor,
+    roundOffMinor,
+    totalMinor,
+    gstPercent,
+  } = billCalc;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,6 +177,8 @@ export default function PickupOrderPage() {
           subtotal_minor: subtotalMinor,
           tax_minor: taxMinor,
           delivery_fee_minor: 0,
+          packaging_fee_minor: packagingFeeMinor,
+          round_off_minor: roundOffMinor,
           total_minor: totalMinor,
           order_lines: orderLines,
         }),
@@ -215,7 +273,11 @@ export default function PickupOrderPage() {
                             </span>
                           </div>
 
-                          {qty === 0 ? (
+                          {item.is_available === false ? (
+                            <span className="text-[11px] font-bold text-[#856B4D] bg-[#E8DFCE] px-3 py-1.5 rounded-full uppercase tracking-wider shrink-0 cursor-not-allowed">
+                              Sold Out
+                            </span>
+                          ) : qty === 0 ? (
                             <Button
                               size="sm"
                               variant="outline"
@@ -292,9 +354,23 @@ export default function PickupOrderPage() {
                       <span className="font-semibold text-[#241F1A]">{formatMoney(subtotalMinor)}</span>
                     </div>
                     <div className="flex justify-between text-[#6B6155]">
-                      <span>GST ({currentOutlet.tax_rate_bps / 100}%)</span>
+                      <span>GST ({gstPercent}%)</span>
                       <span className="font-semibold text-[#241F1A]">{formatMoney(taxMinor)}</span>
                     </div>
+                    {packagingFeeMinor > 0 && (
+                      <div className="flex justify-between text-[#6B6155]">
+                        <span title={billingSettings.packaging_note}>Packaging Charges</span>
+                        <span className="font-semibold text-[#241F1A]">{formatMoney(packagingFeeMinor)}</span>
+                      </div>
+                    )}
+                    {roundOffMinor !== 0 && (
+                      <div className="flex justify-between text-[11px] text-[#6B6155]">
+                        <span>Round Off</span>
+                        <span className="font-semibold text-[#241F1A]">
+                          {roundOffMinor > 0 ? `+${formatMoney(roundOffMinor)}` : `-${formatMoney(Math.abs(roundOffMinor))}`}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-base font-bold text-[#241F1A] pt-2 border-t border-[#D4CBBB]">
                       <span>Total Amount</span>
                       <span className="font-heritage text-[#670E10] text-xl">{formatMoney(totalMinor)}</span>

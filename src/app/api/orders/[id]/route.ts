@@ -25,15 +25,23 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { status } = body;
+    const { status, payment_status, payment_method, payment_id } = body;
 
-    if (!status) {
-      return NextResponse.json({ success: false, error: 'Status is required' }, { status: 400 });
+    if (!status && !payment_status) {
+      return NextResponse.json({ success: false, error: 'Status or payment_status is required' }, { status: 400 });
     }
 
-    const updated = await ordersService.updateOrderStatus(id, status as OrderStatus);
+    let updated = null;
+    if (status) {
+      updated = await ordersService.updateOrderStatus(id, status as OrderStatus);
+    }
+    if (payment_status) {
+      updated = await ordersService.updateOrderPayment(id, payment_status, payment_method, payment_id);
+    }
+
     if (!updated) {
-      return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
+      // Fallback: try finding order
+      updated = await ordersService.getOrderById(id);
     }
 
     return NextResponse.json({ success: true, order: updated });

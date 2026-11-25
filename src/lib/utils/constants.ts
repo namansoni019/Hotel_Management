@@ -29,6 +29,7 @@ export const RESERVATION_TRANSITIONS: Record<ReservationStatus, ReservationStatu
 // ── Housekeeping States ──
 export const HOUSEKEEPING_STATES = {
   AVAILABLE: 'available',
+  UNAVAILABLE: 'unavailable',
   OCCUPIED: 'occupied',
   DIRTY: 'dirty',
   CLEANING: 'cleaning',

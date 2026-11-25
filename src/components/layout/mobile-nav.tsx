@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, BedDouble, Utensils, Coffee, Calendar } from 'lucide-react';
+import { Home, BedDouble, Utensils, Coffee, User } from 'lucide-react';
 
 export const MobileNav: React.FC = () => {
   const pathname = usePathname();
@@ -58,7 +58,7 @@ export const MobileNav: React.FC = () => {
     { label: 'Hotel', href: '/hotel', icon: BedDouble },
     { label: 'Menu', href: '/menu', icon: Utensils },
     { label: 'Dining', href: '/restaurant', icon: Coffee },
-    { label: 'Book', href: '/book', icon: Calendar },
+    { label: 'Profile', href: '/profile', icon: User },
   ];
 
   return (

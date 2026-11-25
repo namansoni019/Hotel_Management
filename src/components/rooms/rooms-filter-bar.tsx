@@ -164,15 +164,16 @@ export function RoomsFilterBar({
     if (!barRootRef.current) return;
     const barRect = barRootRef.current.getBoundingClientRect();
     const windowH = window.innerHeight;
-    const spaceBelow = windowH - barRect.bottom;
-    const spaceAbove = barRect.top;
+    const navClearance = 108;
+    const spaceBelow = Math.max(0, windowH - barRect.bottom);
+    const spaceAbove = Math.max(0, barRect.top - navClearance);
 
-    const flipToTop = spaceBelow < 370 && spaceAbove > spaceBelow;
+    const flipToTop = spaceBelow < 320 && spaceAbove > spaceBelow;
     setPlacement(flipToTop ? 'top' : 'bottom');
 
     const availableH = flipToTop
-      ? Math.max(260, Math.min(480, spaceAbove - 28))
-      : Math.max(260, Math.min(480, spaceBelow - 28));
+      ? Math.max(220, Math.min(460, spaceAbove - 20))
+      : Math.max(240, Math.min(480, spaceBelow - 24));
 
     setMaxContentHeight(availableH);
   }, []);
@@ -232,7 +233,7 @@ export function RoomsFilterBar({
     }
   }, [tooltipOpen, activePanel, selectingField, calibrateBeak]);
 
-  // Handle outside clicks: Keep bar operatable, only close when clicking outside both bar & dialog
+  // Handle outside clicks and Escape key: Keep bar operatable, close cleanly when dismissing
   useEffect(() => {
     if (!tooltipOpen) return;
 
@@ -247,9 +248,17 @@ export function RoomsFilterBar({
       closeTooltipWithAnimation();
     };
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeTooltipWithAnimation();
+      }
+    };
+
     document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
     };
   }, [tooltipOpen]);
 
@@ -355,7 +364,10 @@ export function RoomsFilterBar({
   // Form Submit Handler
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    router.push(`/rooms?checkIn=${checkIn}&checkOut=${checkOut}&guests=${adults}&rooms=${rooms}`);
+    if (tooltipOpen) {
+      closeTooltipWithAnimation();
+    }
+    router.push(`/rooms?checkIn=${checkIn}&checkOut=${checkOut}&guests=${adults}&rooms=${rooms}`, { scroll: false });
   };
 
   // Calendar Day Matrix Generator
@@ -398,7 +410,7 @@ export function RoomsFilterBar({
     return (
       <div className="flex flex-col space-y-3.5">
         {/* Quick Stay Suggestions Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+        <div className="flex-wrap-balance items-center gap-1.5 pb-1">
           {STAY_SUGGESTIONS.map((sug) => {
             const isSelected =
               sug.nights === 0 ? isCustomMode : !isCustomMode && nightsCount === sug.nights;
@@ -406,15 +418,15 @@ export function RoomsFilterBar({
               <button
                 key={sug.label}
                 type="button"
+                title={sug.sublabel}
                 onClick={() => applyStaySuggestion(sug.nights)}
                 className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold tracking-wide transition-all border cursor-pointer ${
                   isSelected
-                    ? 'bg-[#670E10] text-[#FFF8EB] border-[#D8AA67] shadow-xs'
-                    : 'bg-[#FFF8EB] text-[#4A0A0C] border-[#DFD3C3] hover:border-[#D8AA67] hover:bg-[#F5F0E6]'
+                    ? 'bg-[#4F0809] text-[#FFF8EB] border-[#4F0809] shadow-xs'
+                    : 'bg-[#FAF5EB] text-[#4F0809] border-[#E8DFCE] hover:border-[#D8AA67] hover:bg-[#F5ECDC]'
                 }`}
               >
                 <span>{sug.label}</span>
-                <span className="opacity-75 text-[10px] ml-1 hidden sm:inline">({sug.sublabel})</span>
               </button>
             );
           })}
@@ -508,12 +520,12 @@ export function RoomsFilterBar({
                             isPast
                               ? 'h-8 w-8 rounded-full text-[#C5B8A5] opacity-40 cursor-not-allowed'
                               : isCheckInDay || isCheckOutDay
-                              ? 'h-8 w-8 rounded-full bg-[#670E10] text-[#FFF8EB] font-bold shadow-xs ring-2 ring-[#D8AA67] scale-105'
+                              ? 'h-8 w-8 rounded-full bg-[#4F0809] text-[#FFF8EB] font-bold shadow-xs ring-2 ring-[#D8AA67] scale-105'
                               : isInRange
-                              ? 'w-full h-8 text-[#4A0A0C] font-bold hover:bg-[#D8AA67]/40'
+                              ? 'w-full h-8 text-[#4F0809] font-bold hover:bg-[#D8AA67]/40'
                               : !d.isCurrentMonth
                               ? 'h-8 w-8 rounded-full text-[#B0A290] hover:bg-black/5'
-                              : 'h-8 w-8 rounded-full text-[#241F1A] hover:bg-[#FFF8EB] hover:text-[#670E10] hover:ring-1 hover:ring-[#D8AA67]'
+                              : 'h-8 w-8 rounded-full text-[#241F1A] hover:bg-[#FAF5EB] hover:text-[#4F0809] hover:ring-1 hover:ring-[#D8AA67]'
                           }`}
                         >
                           {d.dayNumber}
@@ -528,10 +540,10 @@ export function RoomsFilterBar({
         </div>
 
         {/* Selected Dates Summary Banner & Apply Button */}
-        <div className="pt-3 border-t border-[#DFD3C3] flex items-center justify-between gap-3">
+        <div className="pt-3 border-t border-[#E8DFCE] flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center space-x-2 text-xs text-[#241F1A]">
-            <span className="font-semibold text-[#8F7245]">Stay Duration:</span>
-            <span className="font-bold text-[#670E10]">
+            <span className="font-semibold text-[#9C7A45]">Stay Duration:</span>
+            <span className="font-bold text-[#4F0809]">
               {formattedCheckIn.day} {formattedCheckIn.monthYear} &rarr;{' '}
               {checkOut ? `${formattedCheckOut.day} ${formattedCheckOut.monthYear}` : 'Select Departure'}{' '}
               {checkOut && `(${nightsCount} ${nightsCount === 1 ? 'Night' : 'Nights'})`}
@@ -541,7 +553,7 @@ export function RoomsFilterBar({
           <button
             type="button"
             onClick={() => openTooltip('guests', guestsTileRef)}
-            className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#670E10] to-[#801417] text-[#FFF8EB] text-xs font-bold tracking-wide shadow hover:shadow-md transition cursor-pointer flex items-center space-x-1.5"
+            className="px-5 py-2 rounded-full bg-[#4F0809] hover:bg-[#680b0c] text-[#FFF8EB] text-xs font-bold tracking-wide shadow-xs hover:shadow-md transition cursor-pointer flex items-center space-x-1.5"
           >
             <span>Confirm Dates &bull; Select Guests &rarr;</span>
           </button>
@@ -695,14 +707,14 @@ export function RoomsFilterBar({
           </div>
         </div>
 
-        <div className="pt-3 border-t border-[#DFD3C3] flex items-center justify-between gap-3">
-          <span className="text-xs text-[#7A6F62] italic">
+        <div className="pt-3 border-t border-[#E8DFCE] flex flex-wrap items-center justify-between gap-3">
+          <span className="text-xs text-[#6B533B] italic">
             * 1 chamber is reserved by default for up to 3 guests; 2 chambers auto-suggested for 4+ guests.
           </span>
           <button
             type="button"
             onClick={closeTooltipWithAnimation}
-            className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#670E10] to-[#801417] text-[#FFF8EB] text-xs font-bold tracking-wide shadow hover:shadow-md transition cursor-pointer"
+            className="px-5 py-2 rounded-full bg-[#4F0809] hover:bg-[#680b0c] text-[#FFF8EB] text-xs font-bold tracking-wide shadow-xs hover:shadow-md transition cursor-pointer"
           >
             Apply Guests &amp; Chambers
           </button>
@@ -714,7 +726,7 @@ export function RoomsFilterBar({
   const getPanelHeader = () => {
     if (activePanel === 'calendar') {
       return {
-        icon: <CalendarIcon className="w-4 h-4 text-[#670E10]" />,
+        icon: <CalendarIcon className="w-4 h-4 text-[#4F0809]" />,
         title: selectingField === 'in' ? 'Select Check-In Date' : 'Select Check-Out Date',
         subtitle:
           selectingField === 'in'
@@ -723,7 +735,7 @@ export function RoomsFilterBar({
       };
     }
     return {
-      icon: <Users className="w-4 h-4 text-[#670E10]" />,
+      icon: <Users className="w-4 h-4 text-[#4F0809]" />,
       title: 'Guests & Chambers',
       subtitle: 'Tailor adults, children, pets & room allocation',
     };
@@ -732,11 +744,11 @@ export function RoomsFilterBar({
   const panelHeader = getPanelHeader();
 
   return (
-    <div ref={barRootRef} className="relative w-full max-w-4xl mx-auto mb-12">
-      {/* ── Filter Bar Card (Styled to match rooms page image) ── */}
-      <div className="bg-white rounded-xl border border-[#D4CBBB]/70 shadow-sm p-3 sm:p-4">
-        <form onSubmit={handleFormSubmit} className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 items-center">
-          {/* 1. Check In Tile (Col-span 1 on mobile: Check In & Check Out in a row) */}
+    <div ref={barRootRef} className="relative w-full max-w-4xl mx-auto mb-10 sm:mb-12">
+      {/* ── Light Minimal Floating Filter Bar ── */}
+      <div className="bg-white/95 backdrop-blur-md rounded-3xl sm:rounded-full border border-[#E8DFCE] shadow-[0_8px_30px_rgba(79,8,9,0.05)] p-2.5 sm:p-2">
+        <form onSubmit={handleFormSubmit} className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-center">
+          {/* 1. Check In Tile */}
           <div
             ref={checkInTileRef}
             onClick={() => {
@@ -746,25 +758,24 @@ export function RoomsFilterBar({
                 openTooltip('calendar', checkInTileRef, 'in');
               }
             }}
-            className={`col-span-1 flex items-center space-x-2.5 px-3 py-2 rounded-lg border transition-all cursor-pointer ${
+            className={`col-span-1 flex items-center space-x-2.5 px-3.5 py-2.5 rounded-2xl sm:rounded-full border transition-all cursor-pointer ${
               tooltipOpen && activePanel === 'calendar' && selectingField === 'in'
-                ? 'border-[#670E10] ring-2 ring-[#D8AA67] bg-[#FFF8EB] shadow-xs'
-                : 'border-[#E5DFD5] bg-[#FAF8F3]/60 hover:border-[#D8AA67]'
+                ? 'border-[#4F0809] ring-2 ring-[#D8AA67]/60 bg-[#FAF5EB] shadow-2xs'
+                : 'border-[#E8DFCE]/80 bg-[#FAF7F2]/80 hover:border-[#D8AA67] hover:bg-[#FAF5EB]/70'
             }`}
           >
-            <CalendarIcon className="w-4 h-4 text-[#8F7245] shrink-0" />
+            <CalendarIcon className="w-4 h-4 text-[#9C7A45] shrink-0" />
             <div className="w-full text-left min-w-0">
-              <span className="block text-[10px] uppercase font-bold text-[#7A6F62] leading-none mb-1">
+              <span className="block text-[10px] uppercase font-bold tracking-wider text-[#856B4D] leading-none mb-1">
                 Check In
               </span>
-              <span className="block text-xs text-[#670E10] font-semibold leading-tight truncate">
+              <span className="block text-xs text-[#4F0809] font-semibold leading-tight truncate">
                 {formattedCheckIn.dateFormatted}
               </span>
             </div>
-            <CalendarIcon className="w-3.5 h-3.5 text-[#B08D57]/60 ml-auto hidden min-[360px]:block" />
           </div>
 
-          {/* 2. Check Out Tile (Col-span 1 on mobile: Check In & Check Out in a row) */}
+          {/* 2. Check Out Tile */}
           <div
             ref={checkOutTileRef}
             onClick={() => {
@@ -774,25 +785,24 @@ export function RoomsFilterBar({
                 openTooltip('calendar', checkOutTileRef, 'out');
               }
             }}
-            className={`col-span-1 flex items-center space-x-2.5 px-3 py-2 rounded-lg border transition-all cursor-pointer ${
+            className={`col-span-1 flex items-center space-x-2.5 px-3.5 py-2.5 rounded-2xl sm:rounded-full border transition-all cursor-pointer ${
               tooltipOpen && activePanel === 'calendar' && selectingField === 'out'
-                ? 'border-[#670E10] ring-2 ring-[#D8AA67] bg-[#FFF8EB] shadow-xs'
-                : 'border-[#E5DFD5] bg-[#FAF8F3]/60 hover:border-[#D8AA67]'
+                ? 'border-[#4F0809] ring-2 ring-[#D8AA67]/60 bg-[#FAF5EB] shadow-2xs'
+                : 'border-[#E8DFCE]/80 bg-[#FAF7F2]/80 hover:border-[#D8AA67] hover:bg-[#FAF5EB]/70'
             }`}
           >
-            <CalendarIcon className="w-4 h-4 text-[#8F7245] shrink-0" />
+            <CalendarIcon className="w-4 h-4 text-[#9C7A45] shrink-0" />
             <div className="w-full text-left min-w-0">
-              <span className="block text-[10px] uppercase font-bold text-[#7A6F62] leading-none mb-1">
+              <span className="block text-[10px] uppercase font-bold tracking-wider text-[#856B4D] leading-none mb-1">
                 Check Out
               </span>
-              <span className="block text-xs text-[#670E10] font-semibold leading-tight truncate">
+              <span className="block text-xs text-[#4F0809] font-semibold leading-tight truncate">
                 {formattedCheckOut.dateFormatted}
               </span>
             </div>
-            <CalendarIcon className="w-3.5 h-3.5 text-[#B08D57]/60 ml-auto hidden min-[360px]:block" />
           </div>
 
-          {/* 3. Guests Tile (Col-span 2 on mobile: full width row) */}
+          {/* 3. Guests Tile */}
           <div
             ref={guestsTileRef}
             onClick={() => {
@@ -802,32 +812,32 @@ export function RoomsFilterBar({
                 openTooltip('guests', guestsTileRef);
               }
             }}
-            className={`col-span-2 sm:col-span-1 flex items-center space-x-2.5 px-3 py-2 rounded-lg border transition-all cursor-pointer ${
+            className={`col-span-2 sm:col-span-1 flex items-center space-x-2.5 px-3.5 py-2.5 rounded-2xl sm:rounded-full border transition-all cursor-pointer ${
               tooltipOpen && activePanel === 'guests'
-                ? 'border-[#670E10] ring-2 ring-[#D8AA67] bg-[#FFF8EB] shadow-xs'
-                : 'border-[#E5DFD5] bg-[#FAF8F3]/60 hover:border-[#D8AA67]'
+                ? 'border-[#4F0809] ring-2 ring-[#D8AA67]/60 bg-[#FAF5EB] shadow-2xs'
+                : 'border-[#E8DFCE]/80 bg-[#FAF7F2]/80 hover:border-[#D8AA67] hover:bg-[#FAF5EB]/70'
             }`}
           >
-            <Users className="w-4 h-4 text-[#8F7245] shrink-0" />
-            <div className="w-full text-left">
-              <span className="block text-[10px] uppercase font-bold text-[#7A6F62] leading-none mb-1">
+            <Users className="w-4 h-4 text-[#9C7A45] shrink-0" />
+            <div className="w-full text-left min-w-0">
+              <span className="block text-[10px] uppercase font-bold tracking-wider text-[#856B4D] leading-none mb-1">
                 Guests
               </span>
-              <span className="block text-xs text-[#670E10] font-semibold leading-tight truncate">
-                {adults} {adults === 1 ? 'Adult' : 'Adults'}
+              <span className="block text-xs text-[#4F0809] font-semibold leading-tight truncate">
+                {adults} {adults === 1 ? 'Adult' : 'Adults'} &bull; {rooms} {rooms === 1 ? 'Room' : 'Rooms'}
               </span>
             </div>
-            <ChevronDown className="w-3.5 h-3.5 text-[#670E10] ml-auto shrink-0" />
+            <ChevronDown className="w-3.5 h-3.5 text-[#9C7A45] ml-auto shrink-0" />
           </div>
 
-          {/* 4. Search Rooms Button (Col-span 2 on mobile: full width row) */}
+          {/* 4. Search Chambers Pill Button */}
           <div className="col-span-2 sm:col-span-1">
             <button
               type="submit"
-              className="w-full py-3 px-4 rounded-lg bg-[#670E10] hover:bg-[#821215] text-[#FAF8F3] font-medium text-xs tracking-wide transition-all shadow flex items-center justify-center space-x-1.5 cursor-pointer active:scale-98"
+              className="w-full py-3.5 sm:py-3.5 px-5 rounded-2xl sm:rounded-full bg-[#4F0809] hover:bg-[#680b0c] text-[#FFF8EB] font-bold text-xs uppercase tracking-[0.12em] transition-all shadow-sm hover:shadow-md flex items-center justify-center space-x-2 cursor-pointer active:scale-[0.98]"
             >
-              <Search className="w-3.5 h-3.5 text-[#C9A96E]" />
-              <span>Search Rooms</span>
+              <Search className="w-3.5 h-3.5 text-[#D8AA67]" />
+              <span>Search Chambers</span>
             </button>
           </div>
         </form>
@@ -837,7 +847,7 @@ export function RoomsFilterBar({
       {!isMobile && tooltipOpen && (
         <div
           ref={dialogCardRef}
-          className={`absolute z-50 ${
+          className={`absolute z-[60] ${
             placement === 'top'
               ? 'bottom-[calc(100%+12px)] origin-bottom'
               : 'top-[calc(100%+12px)] origin-top'
@@ -845,7 +855,7 @@ export function RoomsFilterBar({
             activePanel === 'guests'
               ? 'right-0 sm:right-2 w-full max-w-[540px]'
               : 'left-0 sm:left-2 w-full max-w-[700px]'
-          } rounded-[22px] border-2 border-[#D8AA67] bg-[#FAF7F2] shadow-[0_24px_70px_-10px_rgba(35,10,14,0.38),0_6px_20px_rgba(0,0,0,0.08)] flex flex-col overflow-hidden ${
+          } rounded-3xl border border-[#D8AA67] bg-[#FAF7F2] shadow-[0_24px_70px_-10px_rgba(35,10,14,0.22),0_6px_20px_rgba(79,8,9,0.06)] flex flex-col overflow-hidden ${
             placement === 'top'
               ? isClosing
                 ? 'animate-tooltip-collapse-top'
@@ -858,30 +868,30 @@ export function RoomsFilterBar({
           {/* Beak Arrow */}
           {placement === 'bottom' ? (
             <div
-              className="absolute -top-[9px] w-4 h-4 rotate-45 border-t-2 border-l-2 border-[#D8AA67] bg-[#FAF7F2] -translate-x-1/2 pointer-events-none z-20 shadow-xs transition-all duration-200"
+              className="absolute -top-[8px] w-3.5 h-3.5 rotate-45 border-t border-l border-[#D8AA67] bg-white -translate-x-1/2 pointer-events-none z-20 transition-all duration-200"
               style={{ left: `${beakLeftPx}px` }}
             />
           ) : (
             <div
-              className="absolute -bottom-[9px] w-4 h-4 rotate-45 border-b-2 border-r-2 border-[#D8AA67] bg-[#FAF7F2] -translate-x-1/2 pointer-events-none z-20 shadow-xs transition-all duration-200"
+              className="absolute -bottom-[8px] w-3.5 h-3.5 rotate-45 border-b border-r border-[#D8AA67] bg-white -translate-x-1/2 pointer-events-none z-20 transition-all duration-200"
               style={{ left: `${beakLeftPx}px` }}
             />
           )}
 
             {/* Header */}
-            <div className="px-5 py-3 border-b border-[#DFD3C3] flex items-center justify-between bg-[#F5F0E6]/90">
+            <div className="px-5 py-3.5 border-b border-[#E8DFCE] flex items-center justify-between bg-white">
               <div className="flex items-center space-x-2.5">
-                <div className="w-7 h-7 rounded-lg bg-[#FAF7F2] border border-[#D8AA67]/60 flex items-center justify-center shrink-0">
+                <div className="w-8 h-8 rounded-full bg-[#FAF5EB] border border-[#E8DFCE] flex items-center justify-center shrink-0">
                   {panelHeader.icon}
                 </div>
                 <div className="flex flex-col text-left">
                   <span
-                    className="text-base font-bold text-[#670E10] leading-none"
+                    className="text-base font-bold text-[#4F0809] leading-none"
                     style={{ fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)" }}
                   >
                     {panelHeader.title}
                   </span>
-                  <span className="text-[11px] text-[#7A6F62] mt-0.5">
+                  <span className="text-[11px] text-[#6B533B] mt-0.5">
                     {panelHeader.subtitle}
                   </span>
                 </div>
@@ -890,7 +900,7 @@ export function RoomsFilterBar({
               <button
                 type="button"
                 onClick={closeTooltipWithAnimation}
-                className="p-1.5 rounded-full bg-black/5 hover:bg-black/10 text-[#670E10] transition cursor-pointer"
+                className="p-1.5 rounded-full bg-[#FAF7F2] hover:bg-[#FAF3E0] text-[#4F0809] border border-[#E8DFCE] transition cursor-pointer"
                 aria-label="Close dialog"
               >
                 <X className="w-4 h-4" />
@@ -918,12 +928,12 @@ export function RoomsFilterBar({
             onClick={(e) => {
               if (e.target === e.currentTarget) closeTooltipWithAnimation();
             }}
-            className={`fixed inset-0 z-[150] bg-black/60 backdrop-blur-xs flex items-end justify-center p-0 ${
+            className={`fixed inset-0 z-[150] bg-black/50 backdrop-blur-xs flex items-end justify-center p-0 ${
               isClosing ? 'animate-fade-out-backdrop' : 'animate-fade-in-backdrop'
             }`}
           >
             <div
-              className={`w-full max-h-[88vh] rounded-t-[28px] border-t-2 border-x-2 border-[#D8AA67] bg-[#FAF7F2] flex flex-col overflow-hidden ${
+              className={`w-full max-h-[88dvh] rounded-t-[28px] border-t border-x border-[#D8AA67] bg-[#FAF7F2] flex flex-col overflow-hidden ${
                 isClosing ? 'animate-slide-down-modal' : 'animate-slide-up-modal'
               }`}
             >
@@ -931,19 +941,19 @@ export function RoomsFilterBar({
               <div className="w-12 h-1 bg-[#D8AA67]/50 rounded-full mx-auto mt-2.5 mb-1" />
 
               {/* Mobile Header */}
-              <div className="px-5 py-3 border-b border-[#DFD3C3] flex items-center justify-between bg-[#F5F0E6]/90">
+              <div className="px-5 py-3.5 border-b border-[#E8DFCE] flex items-center justify-between bg-white">
                 <div className="flex items-center space-x-2.5">
-                  <div className="w-7 h-7 rounded-lg bg-[#FAF7F2] border border-[#D8AA67]/60 flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-[#FAF5EB] border border-[#E8DFCE] flex items-center justify-center shrink-0">
                     {panelHeader.icon}
                   </div>
                   <div className="flex flex-col text-left">
                     <span
-                      className="text-base font-bold text-[#670E10] leading-none"
+                      className="text-base font-bold text-[#4F0809] leading-none"
                       style={{ fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)" }}
                     >
                       {panelHeader.title}
                     </span>
-                    <span className="text-[11px] text-[#7A6F62] mt-0.5 truncate max-w-[240px]">
+                    <span className="text-[11px] text-[#6B533B] mt-0.5 truncate max-w-[240px]">
                       {panelHeader.subtitle}
                     </span>
                   </div>
@@ -952,7 +962,7 @@ export function RoomsFilterBar({
                 <button
                   type="button"
                   onClick={closeTooltipWithAnimation}
-                  className="p-2 rounded-full bg-black/5 text-[#670E10]"
+                  className="p-2 rounded-full bg-[#FAF7F2] text-[#4F0809] border border-[#E8DFCE]"
                   aria-label="Close dialog"
                 >
                   <X className="w-4 h-4" />
@@ -960,17 +970,17 @@ export function RoomsFilterBar({
               </div>
 
               {/* Content */}
-              <div className="p-4 sm:p-5 overflow-y-auto max-h-[68vh]">
+              <div className="p-4 sm:p-5 overflow-y-auto max-h-[68dvh]">
                 {activePanel === 'calendar' && renderCalendarContent()}
                 {activePanel === 'guests' && renderGuestsStepperContent()}
               </div>
 
               {/* Mobile Action Bottom Bar */}
-              <div className="p-3.5 border-t border-[#DFD3C3] bg-[#F5F0E6] flex items-center justify-between">
+              <div className="p-3.5 border-t border-[#E8DFCE] bg-white flex items-center justify-between">
                 <button
                   type="button"
                   onClick={closeTooltipWithAnimation}
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-[#670E10] to-[#801417] text-[#FFF8EB] text-sm font-bold tracking-wide shadow-md transition text-center cursor-pointer"
+                  className="w-full py-3 rounded-full bg-[#4F0809] hover:bg-[#680b0c] text-[#FFF8EB] text-xs font-bold uppercase tracking-[0.12em] shadow-sm transition text-center cursor-pointer"
                 >
                   Confirm &bull; Continue
                 </button>

@@ -1,394 +1,757 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { collection, onSnapshot } from 'firebase/firestore';
 import {
-  Wifi,
-  Wind,
-  BellRing,
-  Utensils,
-  Car,
-  Users,
-  BedDouble,
-  Maximize2,
-  X,
   ArrowRight,
+  BedDouble,
+  Calendar,
+  Check,
+  Eye,
+  KeyRound,
+  PawPrint,
+  RotateCcw,
+  SlidersHorizontal,
+  Sparkles,
+  Users,
+  X,
 } from 'lucide-react';
+import { db } from '@/lib/firebase';
+import type { Room } from '@/lib/types';
+import { serializeRoomDoc, sortRoomsByNumber } from '@/lib/utils/room-serializer';
+import {
+  buildRoomBookHref,
+  calcNightsCount,
+  formatStayDate,
+  getRoomAmenities,
+  getRoomBedType,
+  getRoomCapacity,
+  getRoomCategoryBadge,
+  getRoomDescription,
+  getRoomHousekeepingMeta,
+  getRoomPhoto,
+  getRoomRateMinor,
+  getRoomTitle,
+} from '@/lib/utils/room-display';
+import { formatMoney } from '@/lib/utils/money';
+import { MandalaOrnament } from '@/components/ui/heritage-ornaments';
 
-interface DeluxeRoomItem {
-  id: string;
-  name: string;
-  tag: string;
-  shortDesc: string;
-  fullDesc: string;
-  guests: string;
-  bed: string;
-  size: string;
-  price: string;
-  image: string;
+export interface HotelSearchState {
+  checkIn?: string;
+  checkOut?: string;
+  guests?: string;
+  adults?: string;
+  children?: string;
+  pets?: string;
+  rooms?: string;
+  search?: string;
 }
 
-const DELUXE_ROOMS: DeluxeRoomItem[] = [
-  {
-    id: 'd0000000-0000-0000-0000-000000000001',
-    name: 'Heritage Deluxe Room',
-    tag: 'Popular',
-    shortDesc: 'A perfect blend of traditional Rajasthani decor, stone jalis and modern luxury.',
-    fullDesc:
-      'Immerse yourself in authentic royal heritage. The Heritage Deluxe Room features carved stone jharokhas, handcrafted teakwood furnishings, fine Rajasthani textiles, and modern comforts.',
-    guests: '2 Guests',
-    bed: '1 King Bed',
-    size: '350 sq.ft',
-    price: '₹ 6,500',
-    image: '/images/rooms/deluxe-garden.jpg',
-  },
-  {
-    id: 'd0000000-0000-0000-0000-000000000002',
-    name: 'Royal Deluxe Room',
-    tag: 'Deluxe',
-    shortDesc: 'Spacious deluxe room featuring authentic stone carvings and arched ceilings.',
-    fullDesc:
-      'Experience royal tranquility in this exquisitely appointed chamber. Designed with warm gold tones, an artisan four-poster king bed, and modern luxury comforts.',
-    guests: '2 Guests',
-    bed: '1 King Bed',
-    size: '380 sq.ft',
-    price: '₹ 6,800',
-    image: '/images/rooms/jharokha-room.jpg',
-  },
-  {
-    id: 'd0000000-0000-0000-0000-000000000003',
-    name: 'Grand Deluxe Room',
-    tag: 'Deluxe',
-    shortDesc: 'Sun-drenched deluxe room with fine Rajput textiles and artisanal accents.',
-    fullDesc:
-      'Sunlit and grand, the Grand Deluxe Room captures the romance of Rajputana with handcrafted lanterns, plush king bed, and round-the-clock bespoke hospitality.',
-    guests: '2 Guests',
-    bed: '1 King Bed',
-    size: '360 sq.ft',
-    price: '₹ 7,200',
-    image: '/images/rooms/lakeview-suite.jpg',
-  },
-];
+interface DeluxeRoomsSectionProps {
+  initialRooms?: Room[];
+  searchState?: HotelSearchState;
+}
 
-const ROOM_FACILITIES = [
-  { name: 'Wi-Fi (High-Speed Internet)', icon: Wifi },
-  { name: 'Air Conditioning (AC)', icon: Wind },
-  { name: '24x7 Room Services Available', icon: BellRing },
-  { name: 'In-room Dining', icon: Utensils },
-  { name: 'Valet Parking', icon: Car },
-];
+type SortOption = 'room_number' | 'price_asc' | 'price_desc' | 'capacity_desc';
 
-export function DeluxeRoomsSection() {
-  const [selectedRoom, setSelectedRoom] = useState<DeluxeRoomItem | null>(null);
+export function DeluxeRoomsSection({
+  initialRooms = [],
+  searchState,
+}: DeluxeRoomsSectionProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  // Lock body scroll when modal is open
+  const [liveRooms, setLiveRooms] = useState<Room[]>(() => sortRoomsByNumber(initialRooms));
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [availableOnly, setAvailableOnly] = useState<boolean>(false);
+  const [sortBy, setSortBy] = useState<SortOption>('room_number');
+  const [modalRoom, setModalRoom] = useState<Room | null>(null);
+
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  // Subscribe to live Firestore `rooms` updates so room states/tariffs stay synchronized
   useEffect(() => {
-    if (selectedRoom) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [selectedRoom]);
-
-  // Handle escape key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSelectedRoom(null);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    const unsubscribe = onSnapshot(
+      collection(db, 'rooms'),
+      (snap) => {
+        if (!snap.empty) {
+          const docs = snap.docs.map((d) =>
+            serializeRoomDoc(d.id, d.data() as Record<string, unknown>)
+          );
+          setLiveRooms(sortRoomsByNumber(docs));
+        }
+      },
+      (err) => {
+        console.warn('Hotel chambers live sync error:', err);
+      }
+    );
+    return () => unsubscribe();
   }, []);
 
-  return (
-<section className="relative py-16 sm:py-20 overflow-hidden" style={{ backgroundColor: 'var(--heritage-ivory, #fff7e8)' }}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Section Header */}
-        <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-14">
-          <span className="text-[10px] sm:text-xs font-bold tracking-[0.22em] uppercase text-[#9C7A45] block mb-1.5">
-            Our Rooms
-          </span>
-          <h2
-            className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#4F0809] leading-tight mb-2.5"
-            style={{
-              fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
-            }}
-          >
-            Stay in Timeless Elegance
-          </h2>
+  // Derive active hotel search parameters from URL or SSR props
+  const activeSearch = useMemo(() => {
+    const checkIn = searchParams.get('checkIn') || searchState?.checkIn || '';
+    const checkOut = searchParams.get('checkOut') || searchState?.checkOut || '';
+    const adultsRaw = parseInt(searchParams.get('adults') || searchState?.adults || '2', 10);
+    const childrenRaw = parseInt(searchParams.get('children') || searchState?.children || '0', 10);
+    const petsRaw = parseInt(searchParams.get('pets') || searchState?.pets || '0', 10);
+    const roomsRaw = parseInt(searchParams.get('rooms') || searchState?.rooms || '1', 10);
+    const isSearchFlag =
+      searchParams.get('search') === '1' ||
+      searchState?.search === '1' ||
+      Boolean(checkIn || searchParams.get('adults') || searchState?.adults);
 
-          {/* Diamond-Tipped Gold Rule */}
-          <div className="flex items-center justify-center gap-2 w-40 sm:w-48 mx-auto mb-3">
-            <span className="h-[1px] flex-1 bg-[#C99A52]/60" />
-            <span className="w-1.5 h-1.5 rotate-45 border border-[#C99A52] bg-[#D8AA67]/40" />
-            <span className="h-[1px] flex-1 bg-[#C99A52]/60" />
+    const adults = Number.isFinite(adultsRaw) && adultsRaw > 0 ? adultsRaw : 2;
+    const children = Number.isFinite(childrenRaw) && childrenRaw >= 0 ? childrenRaw : 0;
+    const pets = Number.isFinite(petsRaw) && petsRaw >= 0 ? petsRaw : 0;
+    const roomsRequested = Number.isFinite(roomsRaw) && roomsRaw > 0 ? roomsRaw : 1;
+    const totalGuests = Math.max(1, adults + children);
+    const perChamberCapacityNeeded = Math.ceil(totalGuests / roomsRequested);
+    const nights = checkIn && checkOut ? calcNightsCount(checkIn, checkOut) : 1;
+
+    return {
+      isActive: isSearchFlag,
+      checkIn,
+      checkOut,
+      adults,
+      children,
+      pets,
+      roomsRequested,
+      totalGuests,
+      perChamberCapacityNeeded,
+      nights,
+    };
+  }, [searchParams, searchState]);
+
+  // Unique room categories extracted dynamically from Firestore rooms
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const room of liveRooms) {
+      set.add(getRoomTitle(room));
+    }
+    return ['ALL', ...Array.from(set)];
+  }, [liveRooms]);
+
+  // Filter and sort rooms according to active hotel search & local filters
+  const filteredRooms = useMemo(() => {
+    const base = liveRooms.filter((room) => {
+      if (room.is_active === false) return false;
+
+      if (selectedCategory !== 'ALL' && getRoomTitle(room) !== selectedCategory) {
+        return false;
+      }
+
+      if (availableOnly && room.housekeeping_state !== 'available') {
+        return false;
+      }
+
+      if (activeSearch.isActive) {
+        const cap = getRoomCapacity(room);
+        if (cap < activeSearch.perChamberCapacityNeeded) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    const sorted = [...base];
+    switch (sortBy) {
+      case 'price_asc':
+        sorted.sort((a, b) => getRoomRateMinor(a) - getRoomRateMinor(b));
+        break;
+      case 'price_desc':
+        sorted.sort((a, b) => getRoomRateMinor(b) - getRoomRateMinor(a));
+        break;
+      case 'capacity_desc':
+        sorted.sort((a, b) => getRoomCapacity(b) - getRoomCapacity(a));
+        break;
+      case 'room_number':
+      default:
+        // In active search mode, lift available chambers ahead of occupied ones cleanly
+        if (activeSearch.isActive) {
+          sorted.sort((a, b) => {
+            const aAvail = a.housekeeping_state === 'available' ? 0 : 1;
+            const bAvail = b.housekeeping_state === 'available' ? 0 : 1;
+            if (aAvail !== bAvail) return aAvail - bAvail;
+            return sortRoomsByNumber([a, b])[0] === a ? -1 : 1;
+          });
+        } else {
+          return sortRoomsByNumber(sorted);
+        }
+        break;
+    }
+    return sorted;
+  }, [liveRooms, selectedCategory, availableOnly, activeSearch, sortBy]);
+
+  // Native <dialog> modal lifecycle + progressive light-dismiss fallback
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    if (modalRoom) {
+      if (!dialog.open) {
+        dialog.showModal();
+      }
+    } else if (dialog.open) {
+      dialog.close();
+    }
+  }, [modalRoom]);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const handleClose = () => {
+      dialog.returnValue = '';
+      setModalRoom(null);
+    };
+
+    dialog.addEventListener('close', handleClose);
+
+    // Fallback for browsers without native `closedby="any"` support
+    let pressedOutside = false;
+    const isOutside = (e: PointerEvent) => {
+      const r = dialog.getBoundingClientRect();
+      return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+    };
+
+    const handlePointerDown = (e: PointerEvent) => {
+      if ('closedBy' in HTMLDialogElement.prototype) return;
+      pressedOutside = isOutside(e);
+    };
+
+    const handlePointerUp = (e: PointerEvent) => {
+      if ('closedBy' in HTMLDialogElement.prototype) return;
+      if (pressedOutside && isOutside(e)) {
+        dialog.close();
+      }
+      pressedOutside = false;
+    };
+
+    dialog.addEventListener('pointerdown', handlePointerDown);
+    dialog.addEventListener('pointerup', handlePointerUp);
+
+    return () => {
+      dialog.removeEventListener('close', handleClose);
+      dialog.removeEventListener('pointerdown', handlePointerDown);
+      dialog.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, []);
+
+  const stayQueryString = useMemo(() => {
+    const qs = new URLSearchParams();
+    if (activeSearch.checkIn) qs.set('checkIn', activeSearch.checkIn);
+    if (activeSearch.checkOut) qs.set('checkOut', activeSearch.checkOut);
+    qs.set('guests', String(activeSearch.totalGuests));
+    return qs.toString();
+  }, [activeSearch]);
+
+  const handleResetFilters = () => {
+    setSelectedCategory('ALL');
+    setAvailableOnly(false);
+    setSortBy('room_number');
+    if (activeSearch.isActive) {
+      router.push('/hotel#hotel-chambers');
+    }
+  };
+
+  return (
+    <section
+      id="hotel-chambers"
+      className="relative py-16 sm:py-24 px-4 sm:px-6 lg:px-8 bg-[#FAF7F2] text-[#2B2018] scroll-mt-24 overflow-hidden"
+    >
+      {/* Subtle Heritage Watermark */}
+      <MandalaOrnament
+        position="top-right"
+        className="w-[460px] h-[460px] -top-24 -right-24 text-[#D8AA67]/10"
+        opacity={0.45}
+      />
+
+      <div className="relative z-10 max-w-7xl mx-auto">
+        {/* ── Light-Minimal Editorial Section Header ── */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10 sm:mb-12">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-[#E8DFCE] text-[11px] font-semibold uppercase tracking-[0.2em] text-[#9C7A45] shadow-2xs mb-4">
+              <Sparkles className="w-3.5 h-3.5 text-[#D8AA67]" />
+              <span>
+                {activeSearch.isActive ? 'Live Search Availability' : 'Heritage Accommodations'}
+              </span>
+            </div>
+
+            <h2
+              className="text-3xl sm:text-5xl font-semibold text-[#4F0809] leading-[1.06] tracking-tight"
+              style={{
+                fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
+              }}
+            >
+              {activeSearch.isActive ? (
+                <>
+                  Available Palace{' '}
+                  <span className="italic font-normal text-[#9C7A45]">Chambers</span>
+                </>
+              ) : (
+                <>
+                  Curated Suites &amp;{' '}
+                  <span className="italic font-normal text-[#9C7A45]">Chambers</span>
+                </>
+              )}
+            </h2>
+
+            <p className="mt-3 text-sm sm:text-base text-[#6A5A4E] leading-relaxed font-light">
+              {activeSearch.isActive
+                ? 'Live sanctuary inventory fetched directly from the palace registry for your selected dates and party configuration.'
+                : 'Each chamber blends centuries-old Rajasthani craftsmanship with serene, minimalist comfort and direct courtyard access.'}
+            </p>
           </div>
 
-          <p className="text-xs sm:text-sm text-[#4F0809]/80 font-normal leading-relaxed">
-            Experience a perfect blend of royal charm and modern luxury with our beautifully designed Deluxe Rooms.
-          </p>
+          <div className="flex items-center gap-3 shrink-0">
+            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-[#E8DFCE] text-xs font-medium text-[#5A483A] shadow-2xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>
+                {filteredRooms.length} {filteredRooms.length === 1 ? 'Chamber' : 'Chambers'} Live
+              </span>
+            </span>
+            <Link
+              href="/rooms"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full border border-[#D8AA67]/70 bg-white text-xs font-semibold uppercase tracking-[0.12em] text-[#4F0809] hover:bg-[#FFF9EF] transition-colors"
+            >
+              <span>Full Catalogue</span>
+              <ArrowRight className="w-3.5 h-3.5 text-[#9C7A45]" />
+            </Link>
+          </div>
         </div>
 
-        {/* 3 Jharokha-Styled Cards in a Single Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-7 mb-4">
-          {DELUXE_ROOMS.map((room) => (
-            <div
-              key={room.id}
-              onClick={() => setSelectedRoom(room)}
-              className="group flex flex-col justify-between bg-[#FDF8EE] rounded-t-3xl rounded-b-xl overflow-hidden border border-[#C99A52]/70 hover:border-[#4F0809] hover:-translate-y-1 transition-all duration-300 ease-out cursor-pointer text-left"
-            >
-              {/* Framed Jharokha Image */}
-              <div className="p-2.5 pb-0">
-                <div className="relative aspect-[16/10] w-full overflow-hidden rounded-t-2xl rounded-b-md bg-[#EFE6D5]">
-                  <Image
-                    src={room.image}
-                    alt={room.name}
-                    fill
-                    className="object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#2B0507]/55 via-transparent to-transparent" />
+        {/* ── Active Search Summary Banner (shown when searching from BookingBar) ── */}
+        {activeSearch.isActive && (
+          <div className="mb-8 rounded-3xl bg-white border border-[#E8DFCE] shadow-[0_10px_32px_-16px_rgba(79,8,9,0.12)] p-4 sm:p-6">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+                {activeSearch.checkIn && activeSearch.checkOut && (
+                  <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-[#FAF7F2] border border-[#EDE5D8] text-xs sm:text-sm font-medium text-[#4F0809]">
+                    <Calendar className="w-4 h-4 text-[#9C7A45]" />
+                    <span>
+                      {formatStayDate(activeSearch.checkIn)} &rarr;{' '}
+                      {formatStayDate(activeSearch.checkOut)}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-white border border-[#E8DFCE] text-[11px] font-semibold text-[#9C7A45]">
+                      {activeSearch.nights} {activeSearch.nights === 1 ? 'Night' : 'Nights'}
+                    </span>
+                  </div>
+                )}
 
-                  <span className="absolute top-2.5 left-2.5 inline-flex items-center gap-1.5 bg-[#4F0809]/95 text-[#F7E5C3] text-[9px] font-semibold px-2.5 py-1 rounded-full uppercase tracking-[0.16em]">
-                    <span className="w-1 h-1 rounded-full bg-[#D8AA67]" />
-                    {room.tag}
+                <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-[#FAF7F2] border border-[#EDE5D8] text-xs sm:text-sm font-medium text-[#4F0809]">
+                  <Users className="w-4 h-4 text-[#9C7A45]" />
+                  <span>
+                    {activeSearch.adults} {activeSearch.adults === 1 ? 'Adult' : 'Adults'}
+                    {activeSearch.children > 0
+                      ? `, ${activeSearch.children} ${
+                          activeSearch.children === 1 ? 'Child' : 'Children'
+                        }`
+                      : ''}
                   </span>
+                </div>
 
-                  <span className="absolute bottom-2.5 right-2.5 bg-[#FDF8EE]/95 text-[#4F0809] text-[9px] font-bold uppercase tracking-[0.14em] px-2.5 py-0.5 rounded-full">
-                    Deluxe Room
+                {activeSearch.pets > 0 && (
+                  <div className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-[#FAF7F2] border border-[#EDE5D8] text-xs sm:text-sm font-medium text-[#4F0809]">
+                    <PawPrint className="w-3.5 h-3.5 text-[#9C7A45]" />
+                    <span>
+                      {activeSearch.pets} {activeSearch.pets === 1 ? 'Pet' : 'Pets'}
+                    </span>
+                  </div>
+                )}
+
+                <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-[#FAF7F2] border border-[#EDE5D8] text-xs sm:text-sm font-medium text-[#4F0809]">
+                  <BedDouble className="w-4 h-4 text-[#9C7A45]" />
+                  <span>
+                    {activeSearch.roomsRequested}{' '}
+                    {activeSearch.roomsRequested === 1 ? 'Chamber' : 'Chambers'}
                   </span>
                 </div>
               </div>
 
-              {/* Card Body */}
-              <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="self-start lg:self-auto inline-flex items-center gap-1.5 px-4 py-2 rounded-full border border-[#E8DFCE] bg-[#FAF7F2] hover:bg-white hover:border-[#D8AA67] text-xs font-semibold text-[#6A5A4E] hover:text-[#4F0809] transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Clear Search</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Light-Minimal Filter & Sort Strip ── */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 pb-5 border-b border-[#E8DFCE]">
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter rooms by category">
+            {categoryOptions.map((cat) => {
+              const isSelected = selectedCategory === cat;
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-4 py-2 rounded-full text-xs font-semibold tracking-wide transition-all cursor-pointer border ${
+                    isSelected
+                      ? 'bg-[#4F0809] text-[#FAF7F2] border-[#4F0809] shadow-xs'
+                      : 'bg-white text-[#5C4E42] border-[#E8DFCE] hover:border-[#D8AA67] hover:text-[#4F0809]'
+                  }`}
+                >
+                  {cat === 'ALL' ? 'All Chambers' : cat}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setAvailableOnly((prev) => !prev)}
+              aria-pressed={availableOnly}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${
+                availableOnly
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                  : 'bg-white border-[#E8DFCE] text-[#5C4E42] hover:border-[#D8AA67]'
+              }`}
+            >
+              <Check className={`w-3.5 h-3.5 ${availableOnly ? 'opacity-100' : 'opacity-40'}`} />
+              <span>Available Only</span>
+            </button>
+
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-[#E8DFCE] text-xs">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-[#9C7A45]" />
+              <label htmlFor="hotel-room-sort" className="sr-only">
+                Sort chambers
+              </label>
+              <select
+                id="hotel-room-sort"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
+                className="bg-transparent text-xs font-semibold text-[#4F0809] focus:outline-none cursor-pointer pr-1"
+              >
+                <option value="room_number">Room Number</option>
+                <option value="price_asc">Tariff: Low to High</option>
+                <option value="price_desc">Tariff: High to Low</option>
+                <option value="capacity_desc">Guest Capacity</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Chambers Grid (Fetched live from Firestore `rooms` docs) ── */}
+        {filteredRooms.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-7">
+            {filteredRooms.map((room) => {
+              const title = getRoomTitle(room);
+              const photo = getRoomPhoto(room);
+              const badge = getRoomCategoryBadge(room);
+              const bedType = getRoomBedType(room);
+              const capacity = getRoomCapacity(room);
+              const rateMinor = getRoomRateMinor(room);
+              const amenities = getRoomAmenities(room);
+              const hk = getRoomHousekeepingMeta(room.housekeeping_state);
+              const bookHref = buildRoomBookHref(room.id, {
+                checkIn: activeSearch.checkIn,
+                checkOut: activeSearch.checkOut,
+                guests: activeSearch.totalGuests,
+              });
+              const detailHref = `/rooms/${encodeURIComponent(room.id)}${
+                stayQueryString ? `?${stayQueryString}` : ''
+              }`;
+              const totalStayMinor =
+                rateMinor * activeSearch.nights * (activeSearch.isActive ? activeSearch.roomsRequested : 1);
+
+              return (
+                <article
+                  key={room.id}
+                  className="group rounded-3xl bg-white border border-[#E8DFCE] shadow-[0_10px_30px_-16px_rgba(79,8,9,0.1)] hover:border-[#D8AA67] hover:shadow-[0_22px_45px_-18px_rgba(79,8,9,0.16)] transition-all duration-300 flex flex-col overflow-hidden"
+                >
+                  {/* Top Media Container (Fixed aspect ratio prevents CLS) */}
+                  <div className="relative aspect-[16/10] w-full overflow-hidden bg-[#F3EDE2]">
+                    <Image
+                      src={photo}
+                      alt={`${title} - Room ${room.room_number}`}
+                      fill
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                      className="object-cover transition-transform duration-700 group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-black/15 pointer-events-none" />
+
+                    {/* Top Floating Badges */}
+                    <div className="absolute top-3.5 left-3.5 right-3.5 flex items-center justify-between gap-2">
+                      <span className="px-3 py-1 rounded-full bg-[#FAF7F2]/95 backdrop-blur-sm border border-[#E8DFCE] text-[10px] font-bold uppercase tracking-[0.16em] text-[#4F0809] shadow-2xs">
+                        {badge}
+                      </span>
+
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border backdrop-blur-sm text-[11px] font-semibold shadow-2xs ${hk.pillClass}`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${hk.dotClass}`} />
+                        <span>{hk.label}</span>
+                      </span>
+                    </div>
+
+                    {/* Room Number Pill */}
+                    <div className="absolute bottom-3.5 left-3.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/95 backdrop-blur-sm border border-[#E8DFCE] text-xs font-semibold text-[#4F0809] shadow-xs">
+                      <KeyRound className="w-3 h-3 text-[#9C7A45]" />
+                      <span>Room #{room.room_number}</span>
+                    </div>
+                  </div>
+
+                  {/* Card Content */}
+                  <div className="p-6 flex-1 flex flex-col justify-between gap-5">
+                    <div className="space-y-3">
+                      <div>
+                        <h3
+                          className="text-2xl font-semibold text-[#4F0809] leading-tight"
+                          style={{
+                            fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
+                          }}
+                        >
+                          {title}
+                        </h3>
+                        <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-[#8C755C]">
+                          <span className="inline-flex items-center gap-1">
+                            <BedDouble className="w-3.5 h-3.5 text-[#9C7A45]" />
+                            {bedType}
+                          </span>
+                          <span aria-hidden="true">•</span>
+                          <span className="inline-flex items-center gap-1">
+                            <Users className="w-3.5 h-3.5 text-[#9C7A45]" />
+                            Up to {capacity} {capacity === 1 ? 'Guest' : 'Guests'}
+                          </span>
+                        </p>
+                      </div>
+
+                      <p className="text-sm text-[#6E6053] leading-relaxed font-light line-clamp-2">
+                        {getRoomDescription(room)}
+                      </p>
+
+                      {/* Minimal Amenities Strip */}
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {amenities.slice(0, 3).map((amenity) => (
+                          <span
+                            key={amenity}
+                            className="px-2.5 py-1 rounded-full bg-[#FAF7F2] border border-[#EDE5D8] text-[11px] font-medium text-[#5C4E42]"
+                          >
+                            {amenity}
+                          </span>
+                        ))}
+                        {amenities.length > 3 && (
+                          <span className="px-2.5 py-1 rounded-full bg-[#FAF7F2] border border-[#EDE5D8] text-[11px] font-medium text-[#9C7A45]">
+                            +{amenities.length - 3} more
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Footer Pricing & Actions */}
+                    <div className="pt-4 border-t border-[#EDE5D8] space-y-4">
+                      <div className="flex items-end justify-between gap-2">
+                        <div>
+                          <div className="flex items-baseline gap-1">
+                            <span
+                              className="text-2xl font-bold text-[#4F0809]"
+                              style={{
+                                fontFamily:
+                                  "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
+                              }}
+                            >
+                              {formatMoney(rateMinor)}
+                            </span>
+                            <span className="text-xs text-[#8C755C]">/ night</span>
+                          </div>
+                          {activeSearch.isActive && (
+                            <p className="text-[11px] font-semibold text-[#9C7A45]">
+                              Est. {formatMoney(totalStayMinor)} for {activeSearch.nights}N
+                              {activeSearch.roomsRequested > 1
+                                ? ` × ${activeSearch.roomsRequested}`
+                                : ''}
+                            </p>
+                          )}
+                        </div>
+
+                        <Link
+                          href={detailHref}
+                          className="text-xs font-semibold text-[#9C7A45] hover:text-[#4F0809] underline-offset-4 hover:underline transition-colors"
+                        >
+                          Full Specs
+                        </Link>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setModalRoom(room)}
+                          className="h-11 px-3 rounded-full border border-[#DFD3C3] bg-[#FAF7F2] hover:bg-white hover:border-[#D8AA67] text-xs font-semibold text-[#4F0809] transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-[#9C7A45]" />
+                          <span>Quick View</span>
+                        </button>
+
+                        <Link
+                          href={bookHref}
+                          className="h-11 px-3 rounded-full bg-[#4F0809] hover:bg-[#670E10] text-[#FAF7F2] text-xs font-semibold transition-all flex items-center justify-center gap-1.5 shadow-xs"
+                        >
+                          <span>Book Stay</span>
+                          <ArrowRight className="w-3.5 h-3.5 text-[#D8AA67]" />
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          /* ── Helpful Empty Search State ── */
+          <div className="rounded-3xl bg-white border border-[#E8DFCE] p-10 sm:p-14 text-center max-w-xl mx-auto shadow-xs">
+            <div className="w-12 h-12 rounded-full bg-[#FAF7F2] border border-[#E8DFCE] flex items-center justify-center mx-auto mb-4 text-[#9C7A45]">
+              <BedDouble className="w-5 h-5" />
+            </div>
+            <h3
+              className="text-2xl font-semibold text-[#4F0809]"
+              style={{
+                fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
+              }}
+            >
+              No Chambers Match This Configuration
+            </h3>
+            <p className="mt-2 text-sm text-[#6E6053] font-light leading-relaxed">
+              Our heritage rooms comfortably host up to{' '}
+              {Math.max(2, ...liveRooms.map((r) => getRoomCapacity(r)))} guests per chamber. Try
+              adding an extra chamber in the search bar or resetting filters to view all suites.
+            </p>
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="mt-6 inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#4F0809] text-[#FAF7F2] text-xs font-semibold uppercase tracking-[0.14em] hover:bg-[#670E10] transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-[#D8AA67]" />
+              <span>Show All Chambers</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Accessible Native Modal Dialog for Quick View ── */}
+      <dialog
+        ref={dialogRef}
+        {...({ closedby: 'any' } as Record<string, string>)}
+        aria-labelledby="hotel-room-dialog-title"
+        className="m-auto w-[calc(100vw-2rem)] max-w-2xl rounded-3xl border border-[#D8AA67]/70 bg-[#FAF7F2] p-0 text-[#2B2018] shadow-[0_32px_90px_-15px_rgba(35,10,14,0.42)] backdrop:bg-[#241F1A]/60 backdrop:backdrop-blur-xs backdrop:overflow-hidden backdrop:overscroll-contain modal:overscroll-contain"
+      >
+        {modalRoom && (
+          <div className="flex flex-col">
+            <div className="relative aspect-[16/9] w-full bg-[#EFE6D8] overflow-hidden">
+              <Image
+                src={getRoomPhoto(modalRoom)}
+                alt={`${getRoomTitle(modalRoom)} - Room ${modalRoom.room_number}`}
+                fill
+                sizes="(max-width: 768px) 100vw, 672px"
+                className="object-cover"
+              />
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setModalRoom(null)}
+                aria-label="Close room preview"
+                className="absolute top-4 right-4 w-10 h-10 rounded-full bg-[#FAF7F2]/95 border border-[#E8DFCE] text-[#4F0809] flex items-center justify-center hover:bg-white transition-colors shadow-sm cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <div className="absolute bottom-4 left-4 flex items-center gap-2">
+                <span className="px-3.5 py-1 rounded-full bg-[#FAF7F2]/95 border border-[#E8DFCE] text-xs font-semibold text-[#4F0809]">
+                  Room #{modalRoom.room_number}
+                </span>
+                <span className="px-3.5 py-1 rounded-full bg-[#4F0809] text-[#FAF7F2] text-[10px] font-bold uppercase tracking-[0.16em]">
+                  {getRoomCategoryBadge(modalRoom)}
+                </span>
+              </div>
+            </div>
+
+            <div className="p-6 sm:p-8 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                 <div>
-                  <h3
-                    className="text-xl sm:text-2xl font-bold text-[#4F0809] mb-1.5 group-hover:text-[#9C7A45] transition-colors duration-200"
+                  <h1
+                    id="hotel-room-dialog-title"
+                    className="text-3xl font-semibold text-[#4F0809] leading-tight"
                     style={{
                       fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
                     }}
                   >
-                    {room.name}
-                  </h3>
-
-                  {/* Ornamental Gold Divider */}
-                  <div className="flex items-center gap-1.5 mb-2.5">
-                    <span className="h-[1px] w-6 bg-[#C99A52]" />
-                    <span className="w-1.5 h-1.5 rotate-45 border border-[#C99A52] bg-[#D8AA67]/40" />
-                    <span className="h-[1px] flex-1 bg-[#C99A52]/30" />
-                  </div>
-
-                  <p className="text-xs text-[#4F0809]/80 line-clamp-2 leading-relaxed mb-4 font-light">
-                    {room.shortDesc}
+                    {getRoomTitle(modalRoom)}
+                  </h1>
+                  <p className="mt-1 text-xs font-medium text-[#8C755C]">
+                    {getRoomBedType(modalRoom)} • Max {getRoomCapacity(modalRoom)} Guests
                   </p>
-
-                  {/* Clean Specs Row with Diamond Separators */}
-                  <div className="flex items-center justify-between text-[11px] sm:text-xs text-[#6B533B] font-medium pt-3 border-t border-[#C99A52]/30 mb-4">
-                    <span className="inline-flex items-center">
-                      <Users className="w-3.5 h-3.5 text-[#9C7A45] mr-1.5 shrink-0" />
-                      {room.guests}
-                    </span>
-                    <span className="text-[#C99A52] text-[9px]">&#9830;</span>
-                    <span className="inline-flex items-center">
-                      <BedDouble className="w-3.5 h-3.5 text-[#9C7A45] mr-1.5 shrink-0" />
-                      {room.bed}
-                    </span>
-                    <span className="text-[#C99A52] text-[9px]">&#9830;</span>
-                    <span className="inline-flex items-center">
-                      <Maximize2 className="w-3.5 h-3.5 text-[#9C7A45] mr-1.5 shrink-0" />
-                      {room.size}
-                    </span>
-                  </div>
                 </div>
 
-                {/* Price and Pill Action Buttons */}
-                <div className="pt-3 border-t border-[#C99A52]/40 flex items-center justify-between gap-2">
-                  <div>
-                    <span className="text-[9px] uppercase tracking-[0.16em] text-[#856B4D] font-semibold block">
-                      Royal Tariff
-                    </span>
+                <div className="text-left sm:text-right">
+                  <div
+                    className="text-2xl font-bold text-[#4F0809]"
+                    style={{
+                      fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
+                    }}
+                  >
+                    {formatMoney(getRoomRateMinor(modalRoom))}
+                    <span className="text-xs font-normal text-[#8C755C]"> / night</span>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-sm text-[#5C4E42] leading-relaxed font-light">
+                {getRoomDescription(modalRoom)}
+              </p>
+
+              <div>
+                <h4 className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9C7A45] mb-2.5">
+                  Included Chamber Amenities
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {getRoomAmenities(modalRoom).map((amenity) => (
                     <span
-                      className="text-xl font-bold text-[#4F0809] leading-tight"
-                      style={{
-                        fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
-                      }}
+                      key={amenity}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-[#E8DFCE] text-xs text-[#4F0809]"
                     >
-                      {room.price}
-                      <span className="text-[11px] font-normal text-[#6B533B]"> / night</span>
+                      <Check className="w-3 h-3 text-[#9C7A45]" />
+                      <span>{amenity}</span>
                     </span>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedRoom(room);
-                      }}
-                      className="px-3.5 py-2 rounded-full text-[11px] font-bold uppercase tracking-[0.1em] text-[#4F0809] bg-[#D8AA67]/25 hover:bg-[#D8AA67]/45 transition-colors cursor-pointer"
-                    >
-                      Details
-                    </button>
-                    <Link
-                      href={`/book?roomTypeId=${room.id}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="inline-flex items-center space-x-1 px-4 py-2 rounded-full text-[11px] font-bold uppercase tracking-[0.12em] text-[#FFF8EB] bg-[#4F0809] hover:bg-[#680b0c] transition-colors cursor-pointer"
-                    >
-                      <span>Book</span>
-                      <ArrowRight className="w-3 h-3 text-[#D8AA67]" />
-                    </Link>
-                  </div>
+                  ))}
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </div>
 
-      {/* ── AMENITIES MODAL (SINGLE BORDER, SHADOW-FREE) ── */}
-      {selectedRoom && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200"
-          onClick={() => setSelectedRoom(null)}
-        >
-          <div
-            className="relative w-full max-w-xl bg-[#FDF8EE] rounded-t-3xl rounded-b-2xl border border-[#C99A52]/80 overflow-hidden max-h-[90vh] flex flex-col text-left text-[#4F0809]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header Image */}
-            <div className="relative h-52 sm:h-64 w-full shrink-0 bg-[#EFE6D5]">
-              <Image
-                src={selectedRoom.image}
-                alt={selectedRoom.name}
-                fill
-                className="object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#2B0507]/90 via-[#2B0507]/35 to-transparent" />
-
-              {/* Close Button */}
-              <button
-                type="button"
-                onClick={() => setSelectedRoom(null)}
-                aria-label="Close modal"
-                className="absolute top-4 right-4 w-9 h-9 rounded-full bg-[#4F0809]/85 hover:bg-[#4F0809] text-[#FFF8EB] flex items-center justify-center backdrop-blur-sm transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4 text-[#D8AA67]" />
-              </button>
-
-              {/* Title & Badge */}
-              <div className="absolute bottom-4 left-5 right-5 text-white">
-                <span className="inline-flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.2em] text-[#F7E5C3] bg-[#4F0809]/95 px-2.5 py-1 rounded-full mb-1.5">
-                  <span className="w-1 h-1 rounded-full bg-[#D8AA67]" />
-                  Deluxe Room
-                </span>
-                <h3
-                  className="text-2xl sm:text-3xl font-bold text-[#FFF8EB]"
-                  style={{
-                    fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
-                  }}
-                >
-                  {selectedRoom.name}
-                </h3>
-              </div>
-            </div>
-
-            {/* Scrollable Content */}
-            <div className="p-5 sm:p-6 overflow-y-auto space-y-5">
-              {/* Specs Strip */}
-              <div className="flex items-center justify-between text-xs sm:text-sm text-[#4F0809] bg-[#F7EFE0] px-4 py-3 rounded-xl">
-                <span className="flex items-center font-medium">
-                  <Users className="w-4 h-4 text-[#9C7A45] mr-1.5 shrink-0" />
-                  {selectedRoom.guests}
-                </span>
-                <span className="text-[#C99A52] text-[10px]">&#9830;</span>
-                <span className="flex items-center font-medium">
-                  <BedDouble className="w-4 h-4 text-[#9C7A45] mr-1.5 shrink-0" />
-                  {selectedRoom.bed}
-                </span>
-                <span className="text-[#C99A52] text-[10px]">&#9830;</span>
-                <span className="flex items-center font-medium">
-                  <Maximize2 className="w-4 h-4 text-[#9C7A45] mr-1.5 shrink-0" />
-                  {selectedRoom.size}
-                </span>
-              </div>
-
-              {/* Description */}
-              <div>
-                <p className="text-xs sm:text-sm text-[#4F0809]/85 leading-relaxed font-normal">
-                  {selectedRoom.fullDesc}
-                </p>
-              </div>
-
-              {/* Room Facilities */}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <h4 className="text-[11px] uppercase font-bold tracking-[0.18em] text-[#9C7A45]">
-                    Room Facilities
-                  </h4>
-                  <span className="h-[1px] flex-1 bg-[#C99A52]/30" />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {ROOM_FACILITIES.map((facility, idx) => {
-                    const Icon = facility.icon;
-                    return (
-                      <div
-                        key={idx}
-                        className="flex items-center space-x-3 p-2.5 rounded-xl bg-[#F7EFE0]/80"
-                      >
-                        <div className="w-8 h-8 rounded-full bg-[#FDF8EE] flex items-center justify-center text-[#4F0809] shrink-0">
-                          <Icon className="w-4 h-4 text-[#9C7A45]" />
-                        </div>
-                        <span className="text-xs sm:text-sm font-medium text-[#4F0809]">
-                          {facility.name}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Bottom Action Bar */}
-            <div className="p-4 sm:p-5 bg-[#F7EFE0] border-t border-[#C99A52]/40 flex items-center justify-between shrink-0">
-              <div>
-                <span className="text-[9px] uppercase tracking-[0.16em] text-[#856B4D] font-semibold block">
-                  Royal Tariff
-                </span>
-                <span
-                  className="text-xl sm:text-2xl font-bold text-[#4F0809]"
-                  style={{
-                    fontFamily: "var(--font-display, 'Cormorant Garamond', Georgia, serif)",
-                  }}
-                >
-                  {selectedRoom.price}
-                  <span className="text-xs font-normal text-[#6B533B]"> / night</span>
-                </span>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedRoom(null)}
-                  className="px-4 py-2.5 rounded-full text-xs font-bold uppercase tracking-[0.1em] text-[#4F0809] bg-[#FDF8EE] hover:bg-[#EFE6D5] transition-colors cursor-pointer"
-                >
-                  Close
-                </button>
+              <div className="pt-4 border-t border-[#E8DFCE] flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3">
                 <Link
-                  href={`/book?roomTypeId=${selectedRoom.id}`}
-                  className="inline-flex items-center space-x-1.5 px-5 py-2.5 rounded-full text-xs font-bold uppercase tracking-[0.12em] text-[#FFF8EB] bg-[#4F0809] hover:bg-[#680b0c] transition-colors cursor-pointer"
+                  href={`/rooms/${encodeURIComponent(modalRoom.id)}${
+                    stayQueryString ? `?${stayQueryString}` : ''
+                  }`}
+                  onClick={() => setModalRoom(null)}
+                  className="px-5 py-2.5 rounded-full border border-[#DFD3C3] bg-white text-xs font-semibold text-[#4F0809] hover:border-[#D8AA67] text-center transition-colors"
                 >
-                  <span>Book Now</span>
+                  Open Full Chamber Page
+                </Link>
+                <Link
+                  href={buildRoomBookHref(modalRoom.id, {
+                    checkIn: activeSearch.checkIn,
+                    checkOut: activeSearch.checkOut,
+                    guests: activeSearch.totalGuests,
+                  })}
+                  onClick={() => setModalRoom(null)}
+                  className="px-6 py-2.5 rounded-full bg-[#4F0809] text-[#FAF7F2] text-xs font-semibold hover:bg-[#670E10] text-center inline-flex items-center justify-center gap-2 shadow-sm transition-colors"
+                >
+                  <span>Reserve Room #{modalRoom.room_number}</span>
                   <ArrowRight className="w-3.5 h-3.5 text-[#D8AA67]" />
                 </Link>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </dialog>
     </section>
   );
 }

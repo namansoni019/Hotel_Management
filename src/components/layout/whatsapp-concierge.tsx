@@ -67,7 +67,7 @@ export const WhatsAppConcierge: React.FC = () => {
     if (pathname === '/rooms') {
       return 'Namaste! I am exploring heritage chambers at Rajmahal Heritage Hotel and would like assistance choosing a room.';
     }
-    if (pathname === '/book') {
+    if (pathname.startsWith('/book')) {
       return 'Namaste! I am booking a stay at Rajmahal and have a quick question regarding check-in timings and payment options.';
     }
     if (pathname === '/hotel') {
@@ -96,11 +96,11 @@ export const WhatsAppConcierge: React.FC = () => {
     >
       {/* Expanded Royal Concierge Card */}
       {isOpen && (
-<div className="mb-3 w-[calc(100vw-2rem)] max-w-[310px] sm:w-80 rounded-t-3xl rounded-b-2xl bg-[#FDF8EE] border border-[#C99A52]/80 overflow-hidden text-[#4F0809] animate-fade-in-up">
+<div className="mb-3 w-[calc(100vw-2rem)] max-w-[310px] sm:w-80 rounded-4xl bg-[#FFFFFF] border border-[#C99A52]/20 overflow-hidden text-[#4F0809] animate-fade-in-up">
           {/* Header Banner (Unified Background) */}
-          <div className="px-4 py-3.5 flex items-center justify-between border-b border-[#C99A52]/30">
+          <div className="px-4 py-3.5 pb-0 flex items-center justify-between">
             <div className="flex items-center space-x-2.5">
-              <div className="w-9 h-9 rounded-full bg-[#25D366]/15 border border-[#25D366]/40 flex items-center justify-center text-[#15803D] shrink-0">
+              <div className="w-9 h-9 rounded-full bg-[#25D366]/15 flex items-center justify-center text-[#15803D] shrink-0">
                 <Sparkles className="w-4 h-4" />
               </div>
               <div>

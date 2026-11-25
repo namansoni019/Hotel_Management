@@ -18,7 +18,10 @@ import {
   Calendar,
   PhoneCall,
   Home as HomeIcon,
+  ShoppingBag,
+  CalendarCheck,
 } from 'lucide-react';
+import { OrdersDrawer } from '@/components/orders/orders-drawer';
 import { subscribeToAuth, signOutUser, getUserProfile, checkAdminInDb } from '@/lib/firebase/auth';
 import type { FirebaseUser } from '@/lib/firebase/auth';
 
@@ -76,6 +79,34 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isStaff, setIsStaff] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Orders Swipeable Drawer State
+  const [isOrdersDrawerOpen, setIsOrdersDrawerOpen] = useState(false);
+  const [activeOrderCount, setActiveOrderCount] = useState(0);
+
+  // Sync active order count
+  useEffect(() => {
+    const updateActiveCount = () => {
+      try {
+        const raw = localStorage.getItem('rajmahal_user_order_ids_v1');
+        if (raw) {
+          const ids = JSON.parse(raw);
+          setActiveOrderCount(Array.isArray(ids) ? ids.length : 0);
+        }
+      } catch {}
+    };
+    updateActiveCount();
+
+    const handleGlobalOpen = () => {
+      setIsOrdersDrawerOpen(true);
+    };
+    window.addEventListener('open-orders-drawer', handleGlobalOpen);
+    window.addEventListener('storage', updateActiveCount);
+    return () => {
+      window.removeEventListener('open-orders-drawer', handleGlobalOpen);
+      window.removeEventListener('storage', updateActiveCount);
+    };
+  }, []);
 
   // Swipe gesture state for mobile bottom drawer
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
@@ -365,6 +396,25 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* ── 3. Right: Desktop Action Pills ── */}
           <div className="hidden sm:flex items-center space-x-2.5 md:space-x-3 shrink-0">
 
+            {/* Desktop Orders Button (Menu Page Only) */}
+            {(pathname === '/menu' || pathname?.startsWith('/menu/')) && (
+              <button
+                type="button"
+                onClick={() => setIsOrdersDrawerOpen(true)}
+                className="hidden sm:inline-flex items-center space-x-1.5 px-1.5 py-1.5 rounded-full bg-white hover:bg-[#FAF3E0] border border-[#4F0809]/20 hover:border-[#D8AA67] text-xs font-bold text-[#4F0809] active:scale-95 transition cursor-pointer shadow-2xs shrink-0"
+                title="View Orders"
+                aria-label="View Orders"
+              >
+                <ShoppingBag className="w-3.5 h-3.5 text-[#9C7A45]" />
+                <span className="uppercase tracking-wider">Orders</span>
+                {activeOrderCount > 0 && (
+                  <span className="w-4 h-4 rounded-full bg-[#4F0809] text-[#FFF8EB] text-[9px] flex items-center justify-center font-bold">
+                    {activeOrderCount}
+                  </span>
+                )}
+              </button>
+            )}
+
             {/* Staff Admin Panel Badge Button */}
             {user && isStaff && (
               <Link
@@ -384,7 +434,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   type="button"
                   onClick={() => setProfileOpen(!profileOpen)}
-                  className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-full bg-white hover:bg-[#4F0809]/5 border border-[#4F0809]/15 hover:border-[#D8AA67] text-xs font-bold uppercase tracking-wider text-[#4F0809] transition cursor-pointer"
+                  className="inline-flex items-center space-x-2 px-1.5 py-1.5 rounded-full bg-white hover:bg-[#cccccc]/95 border border-[#4F0809]/15 hover:border-[#D8AA67] text-xs font-bold uppercase tracking-wider text-[#4F0809] transition cursor-pointer"
                   aria-label="User profile menu"
                   aria-expanded={profileOpen}
                 >
@@ -443,6 +493,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </Link>
 
                       <Link
+                        href="/bookings"
+                        onClick={() => setProfileOpen(false)}
+                        className="flex items-center space-x-3 px-4 py-2.5 text-[#380506] hover:bg-[#F5EFE6] transition-colors"
+                      >
+                        <CalendarCheck className="w-4 h-4 text-[#D8AA67]" />
+                        <span className="font-medium">Your Bookings</span>
+                      </Link>
+
+                      <Link
                         href="/rooms"
                         onClick={() => setProfileOpen(false)}
                         className="flex items-center space-x-3 px-4 py-2.5 text-[#380506] hover:bg-[#F5EFE6] transition-colors"
@@ -485,29 +544,25 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </div>
 
-          {/* ── 4. Mobile Displays: Show Login Button AND Menu Button with Menu Icon ── */}
+          {/* ── 4. Mobile Displays: Show Orders Button AND Menu Button with Menu Icon ── */}
           <div className="flex sm:hidden items-center space-x-2">
-            {/* Mobile Login / Profile Button Capsule */}
-            {user ? (
-              <Link
-                href="/profile"
-                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-white hover:bg-[#cccccc]/95 border border-[#4F0809]/15 text-[11px] font-bold text-[#4F0809] active:scale-95 transition"
-              >
-                <div className="w-4 h-4 rounded-full bg-[#D8AA67] text-[#2B0507] font-bold text-[9px] flex items-center justify-center">
-                  {initial}
-                </div>
-                <span className="text-[10px] uppercase font-bold text-[#4F0809]">
-                  Profile
+            {/* Mobile Orders Button Capsule (Opens Orders Swipeable Drawer) */}
+            <button
+              type="button"
+              onClick={() => setIsOrdersDrawerOpen(true)}
+              className="inline-flex items-center space-x-1.5 px-1.5 py-1.5 rounded-full bg-white hover:bg-[#FAF3E0] border border-[#4F0809]/20 text-[11px] font-bold text-[#4F0809] active:scale-95 transition cursor-pointer shadow-xs"
+              aria-label="View your orders"
+            >
+              <ShoppingBag className="w-3.5 h-3.5 text-[#9C7A45]" />
+              <span className="text-[10px] uppercase font-bold text-[#4F0809] tracking-wider">
+                Orders
+              </span>
+              {activeOrderCount > 0 && (
+                <span className="w-4 h-4 rounded-full bg-[#4F0809] text-[#FFF8EB] text-[9px] flex items-center justify-center font-bold">
+                  {activeOrderCount}
                 </span>
-              </Link>
-            ) : (
-              <Link
-                href="/login"
-                className="inline-flex items-center px-3 py-1.5 rounded-full bg-white hover:bg-[#cccccc]/95 border border-[#4F0809]/15 text-[11px] font-bold uppercase tracking-wider text-[#4F0809] active:scale-95 transition cursor-pointer"
-              >
-                <span>Sign In</span>
-              </Link>
-            )}
+              )}
+            </button>
 
             {/* Mobile Menu Button with Menu Icon Capsule */}
             <button
@@ -628,6 +683,40 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                 )}
 
+                {/* Your Orders Action in Mobile Menu */}
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      closeMobileMenu();
+                      setIsOrdersDrawerOpen(true);
+                    }}
+                    className="w-full py-2.5 px-3.5 rounded-xl bg-white hover:bg-[#FAF3E0] border border-[#D8AA67]/40 text-[#4F0809] font-bold text-xs uppercase tracking-wider flex items-center justify-between shadow-2xs active:scale-98 transition cursor-pointer"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <ShoppingBag className="w-4 h-4 text-[#9C7A45]" />
+                      <span>Your Orders &amp; Kitchen Status</span>
+                    </div>
+                    {activeOrderCount > 0 && (
+                      <span className="w-5 h-5 rounded-full bg-[#4F0809] text-[#FFF8EB] text-[10px] flex items-center justify-center font-bold">
+                        {activeOrderCount}
+                      </span>
+                    )}
+                  </button>
+
+                  <Link
+                    href="/bookings"
+                    onClick={closeMobileMenu}
+                    className="w-full py-2.5 px-3.5 rounded-xl bg-white hover:bg-[#FAF3E0] border border-[#D8AA67]/40 text-[#4F0809] font-bold text-xs uppercase tracking-wider flex items-center justify-between shadow-2xs active:scale-98 transition"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <CalendarCheck className="w-4 h-4 text-[#9C7A45]" />
+                      <span>Your Bookings</span>
+                    </div>
+                    <ArrowRight className="w-3.5 h-3.5 text-[#9C7A45]" />
+                  </Link>
+                </div>
+
                 {/* Primary Action Button on Mobile */}
                 <div>
                   <Link
@@ -712,6 +801,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>,
           document.body
         )}
+
+      {/* Orders Swipeable Drawer Component */}
+      <OrdersDrawer
+        isOpen={isOrdersDrawerOpen}
+        onClose={() => setIsOrdersDrawerOpen(false)}
+      />
     </>
   );
 };

@@ -367,6 +367,37 @@ body {
   animation: fadeOutBackdrop 0.22s ease-in forwards;
 }
 
+/* ── Drawer Slide Animations ── */
+@keyframes slideLeftDrawer {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-left-drawer {
+  animation: slideLeftDrawer 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideUpDrawer {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up-drawer {
+  animation: slideUpDrawer 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.ease-spring-ios {
+  transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 /* ── Desktop Dialog Expanding & Collapsing Animations ── */
 @keyframes dialogExpand {
   0% {
@@ -458,3 +489,145 @@ body {
 .animate-tooltip-collapse-top {
   animation: tooltipDialogCollapseTop 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
 }
+
+/* ── Light Minimal Floating Food Animations ── */
+@keyframes floatGentle {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(2deg);
+  }
+}
+
+@keyframes floatReverse {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(8px) rotate(-2deg);
+  }
+}
+
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-12px) scale(1.02);
+  }
+}
+
+.animate-float-gentle {
+  animation: floatGentle 6s ease-in-out infinite;
+}
+
+.animate-float-reverse {
+  animation: floatReverse 7s ease-in-out infinite;
+}
+
+.animate-float-slow {
+  animation: floatSlow 8s ease-in-out infinite;
+}
+
+/* ── Scroll-Driven Rotation & Staggered Reveal ── */
+.food-scroll-rotate {
+  will-change: transform;
+  transform: rotate(var(--food-scroll-rot, 0deg));
+}
+
+.reveal-fade-up {
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity 0.75s cubic-bezier(0.16, 1, 0.3, 1), transform 0.75s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reveal-fade-up.is-revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .food-scroll-rotate {
+    transform: none !important;
+  }
+  .reveal-fade-up {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}
+
+/* ── Restaurant State-Aware Sticky Sub-Nav & Scroll-Driven Reveal ── */
+html {
+  scroll-padding-top: 9rem;
+}
+
+.restaurant-sticky-nav-wrapper {
+  position: sticky;
+  top: 4.5rem;
+  z-index: 30;
+  container-type: scroll-state;
+  container-name: restaurant-quicknav;
+}
+
+@media (min-width: 640px) {
+  .restaurant-sticky-nav-wrapper {
+    top: 5.5rem;
+  }
+}
+
+.restaurant-sticky-pillbar {
+  transition:
+    background-color 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+@container restaurant-quicknav scroll-state(stuck: top) {
+  .restaurant-sticky-pillbar {
+    background-color: rgba(255, 255, 255, 0.96);
+    border-color: rgba(216, 170, 103, 0.9);
+    box-shadow: 0 12px 32px -12px rgba(79, 8, 9, 0.16);
+  }
+}
+
+.restaurant-sticky-nav-wrapper.is-stuck .restaurant-sticky-pillbar {
+  background-color: rgba(255, 255, 255, 0.96);
+  border-color: rgba(216, 170, 103, 0.9);
+  box-shadow: 0 12px 32px -12px rgba(79, 8, 9, 0.16);
+}
+
+@keyframes scrollEntryReveal {
+  entry 0% {
+    opacity: 0.2;
+    transform: translateY(22px) scale(0.985);
+  }
+  entry 100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports ((animation-timeline: view()) and (animation-range: entry)) {
+    .scroll-view-reveal {
+      animation: scrollEntryReveal auto linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 40%;
+    }
+  }
+}
+
+/* ── Balanced Wrapping for Pill Strips & Tag Clouds ── */
+.flex-wrap-balance {
+  display: flex;
+  flex-wrap: wrap;
+  flex-wrap: balance;
+}
+
+/* ── Hide scrollbar (keeps scrollability) ── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+

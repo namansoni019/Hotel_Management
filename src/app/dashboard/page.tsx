@@ -115,7 +115,7 @@ export default function AdminDashboardPage() {
 
   // Real-time Firestore state
   const [orders, setOrders] = useState<Order[]>(() => dataRepository.getOrders());
-  const [bookings, setBookings] = useState<Reservation[]>(() => dataRepository.getReservations());
+  const [bookings, setBookings] = useState<Reservation[]>([]);
   const [tableReservations, setTableReservations] = useState<TableReservation[]>(() => dataRepository.getTableReservations());
   const [rooms, setRooms] = useState<Room[]>(() => dataRepository.getRooms());
   const [inventory, setInventory] = useState<InventoryItem[]>(() => dataRepository.getInventory());

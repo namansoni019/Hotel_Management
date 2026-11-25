@@ -15,12 +15,19 @@ import { dataRepository } from '@/lib/data/repository';
 import type { Order, OrderStatus, OrderLine } from '@/lib/types';
 
 export const ordersService = {
-  async getOrders(outletId?: string): Promise<Order[]> {
+  async getOrders(outletId?: string, uid?: string): Promise<Order[]> {
     try {
       const ordersRef = collection(db, 'orders');
-      const q = outletId
-        ? query(ordersRef, where('outlet_id', '==', outletId), orderBy('created_at', 'desc'))
-        : query(ordersRef, orderBy('created_at', 'desc'));
+      let q;
+      if (uid && outletId) {
+        q = query(ordersRef, where('outlet_id', '==', outletId), where('uid', '==', uid), orderBy('created_at', 'desc'));
+      } else if (uid) {
+        q = query(ordersRef, where('uid', '==', uid), orderBy('created_at', 'desc'));
+      } else if (outletId) {
+        q = query(ordersRef, where('outlet_id', '==', outletId), orderBy('created_at', 'desc'));
+      } else {
+        q = query(ordersRef, orderBy('created_at', 'desc'));
+      }
 
       const snapshot = await getDocs(q);
       if (!snapshot.empty) {
@@ -30,9 +37,24 @@ export const ordersService = {
         })) as Order[];
       }
     } catch (err) {
-      console.warn('Firestore getOrders fallback to local repository:', err);
+      console.warn('Firestore getOrders fallback to local repository / client filtering:', err);
+      // Fallback: fetch without complex index and filter in memory
+      try {
+        const ordersRef = collection(db, 'orders');
+        const snap = await getDocs(query(ordersRef, orderBy('created_at', 'desc')));
+        if (!snap.empty) {
+          let list = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as Order[];
+          if (outletId) list = list.filter((o) => o.outlet_id === outletId);
+          if (uid) list = list.filter((o) => (o as any).uid === uid || (o as any).user_id === uid);
+          return list;
+        }
+      } catch {}
     }
-    return dataRepository.getOrders(outletId);
+    const all = dataRepository.getOrders(outletId);
+    if (uid) {
+      return all.filter((o) => (o as any).uid === uid || (o as any).user_id === uid);
+    }
+    return all;
   },
 
   async getOrderById(orderId: string): Promise<Order | undefined> {
@@ -79,9 +101,15 @@ export const ordersService = {
     tax_minor: number;
     service_charge_minor: number;
     discount_minor: number;
+    round_off_minor?: number;
     total_minor: number;
+    invoice_number?: string;
     payment_mode?: 'upi' | 'cash' | 'card' | string;
     payment_method?: string;
+    payment_status?: string;
+    payment_id?: string | null;
+    uid?: string | null;
+    user_id?: string | null;
     order_lines: Array<{
       menu_item_id: string;
       item_name_snapshot: string;
@@ -110,7 +138,7 @@ export const ordersService = {
       order_lines: localOrderLines,
       status: 'new',
       cancel_reason: null,
-      created_by: null,
+      created_by: data.user_id || null,
       assigned_delivery_staff: null,
     });
 
@@ -121,6 +149,11 @@ export const ordersService = {
         id: createdLocalOrder.id,
         order_number: orderNumber,
         status: 'new',
+        payment_status: data.payment_status || (data.payment_method === 'pay_on_delivery' ? 'pending' : 'pending'),
+        payment_method: data.payment_method || 'pay_on_delivery',
+        payment_id: data.payment_id || null,
+        uid: data.uid || data.user_id || null,
+        user_id: data.uid || data.user_id || null,
         order_lines: localOrderLines,
         created_at: serverTimestamp(),
         updated_at: serverTimestamp(),
@@ -130,6 +163,35 @@ export const ordersService = {
     }
 
     return createdLocalOrder;
+  },
+
+  async updateOrderPayment(
+    orderId: string,
+    paymentStatus: string,
+    paymentMethod?: string,
+    paymentId?: string
+  ): Promise<Order | null> {
+    try {
+      const orderRef = doc(db, 'orders', orderId);
+      const updateData: Record<string, any> = {
+        payment_status: paymentStatus,
+        updated_at: serverTimestamp(),
+      };
+      if (paymentMethod) updateData.payment_method = paymentMethod;
+      if (paymentId) updateData.payment_id = paymentId;
+      await updateDoc(orderRef, updateData);
+    } catch (err) {
+      console.warn('Firestore updateOrderPayment fallback:', err);
+    }
+
+    const localOrder = dataRepository.getOrderById(orderId) || dataRepository.getOrderByNumber(orderId);
+    if (localOrder) {
+      localOrder.payment_status = paymentStatus;
+      if (paymentMethod) localOrder.payment_method = paymentMethod;
+      if (paymentId) localOrder.payment_id = paymentId;
+      return localOrder;
+    }
+    return null;
   },
 
   async updateOrderStatus(orderId: string, status: OrderStatus, reason?: string): Promise<Order | null> {

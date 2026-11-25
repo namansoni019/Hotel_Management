@@ -7,8 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatMoney } from '@/lib/utils/money';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { buildCategoriesFromItems } from '@/lib/services/menu-service';
+import { billingService } from '@/lib/services/billing-service';
 import { dataRepository } from '@/lib/data/repository';
-import type { MenuItem, Table, Outlet, MenuCategory } from '@/lib/types';
+import type { MenuItem, Table, Outlet, MenuCategory, BillingSettings } from '@/lib/types';
+import { DEFAULT_BILLING_SETTINGS } from '@/lib/types';
 import {
   Utensils,
   Plus,
@@ -76,23 +81,62 @@ function QRTableOrderContent() {
       return;
     }
 
-    if (resolved) {
-      setTable(resolved.table);
-      setOutlet(resolved.outlet);
-      fetch(`/api/menu?outletId=${resolved.outlet.id}`)
-        .then((r) => r.json())
-        .then((data) => {
-          setCategories(data.categories || []);
-        })
-        .catch(() => {
-          setCategories([]);
-        });
-    } else {
+    if (!resolved) {
       setErrorMsg('Invalid or expired QR code table session. Please consult staff.');
+      return;
     }
+
+    setTable(resolved.table);
+    setOutlet(resolved.outlet);
+
+    let itemsList: MenuItem[] = [];
+    let catsList: Array<Partial<MenuCategory> & { id: string }> = [];
+
+    const updateState = () => {
+      const built = buildCategoriesFromItems(itemsList, catsList, resolved.outlet.id);
+      setCategories(built);
+    };
+
+    const unsubItems = onSnapshot(
+      collection(db, 'menu_items'),
+      (snap) => {
+        itemsList = snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as MenuItem[];
+        updateState();
+      },
+      (err) => {
+        console.warn('Real-time QR menu_items error:', err);
+        fetch(`/api/menu?outletId=${resolved.outlet.id}`)
+          .then((r) => r.json())
+          .then((data) => setCategories(data.categories || []))
+          .catch(() => setCategories([]));
+      }
+    );
+
+    const unsubCats = onSnapshot(
+      collection(db, 'menu_categories'),
+      (snap) => {
+        catsList = snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as Array<Partial<MenuCategory> & { id: string }>;
+        updateState();
+      },
+      (err) => {
+        console.warn('Real-time QR menu_categories error:', err);
+      }
+    );
+
+    return () => {
+      unsubItems();
+      unsubCats();
+    };
   }, [token, router]);
 
   const addToCart = (item: MenuItem) => {
+    if (item.is_available === false) return;
     setCart((prev) => {
       const existing = prev[item.id];
       if (existing) {
@@ -134,15 +178,33 @@ function QRTableOrderContent() {
     });
   };
 
+  // Real-time Billing & Tax settings from Firestore settings/billing
+  const [billingSettings, setBillingSettings] = useState<BillingSettings>(DEFAULT_BILLING_SETTINGS);
+
+  useEffect(() => {
+    const unsub = billingService.subscribeBillingSettings((settings) => {
+      setBillingSettings(settings);
+    });
+    return () => unsub();
+  }, []);
+
   // Calculations
   const cartItems = Object.values(cart);
   const totalItemCount = cartItems.reduce((sum, ci) => sum + ci.quantity, 0);
   const subtotalMinor = cartItems.reduce((sum, ci) => sum + ci.item.price_minor * ci.quantity, 0);
-  const taxRateBps = outlet?.tax_rate_bps || 500; // 5%
-  const taxMinor = Math.round((subtotalMinor * taxRateBps) / 10000);
-  const serviceChargeBps = outlet?.service_charge_bps || 0;
-  const serviceChargeMinor = Math.round((subtotalMinor * serviceChargeBps) / 10000);
-  const totalMinor = subtotalMinor + taxMinor + serviceChargeMinor;
+
+  const billCalc = React.useMemo(() => {
+    return billingService.calculateOrderBill(subtotalMinor, 'dine_in', billingSettings);
+  }, [subtotalMinor, billingSettings]);
+
+  const {
+    taxMinor,
+    serviceChargeMinor,
+    serviceChargePercent,
+    roundOffMinor,
+    totalMinor,
+    gstPercent,
+  } = billCalc;
 
   const handlePlaceOrder = async () => {
     if (!table || !outlet || cartItems.length === 0) return;
@@ -387,7 +449,11 @@ function QRTableOrderContent() {
                             ))}
                           </div>
 
-                          {cartQty === 0 ? (
+                          {item.is_available === false ? (
+                            <span className="text-[11px] font-bold text-[#856B4D] bg-[#E8DFCE] px-3 py-1.5 rounded-full uppercase tracking-wider shrink-0 cursor-not-allowed">
+                              Sold Out
+                            </span>
+                          ) : cartQty === 0 ? (
                             <Button
                               size="sm"
                               variant="outline"
@@ -522,13 +588,21 @@ function QRTableOrderContent() {
                       <span className="font-bold text-[#241F1A]">{formatMoney(subtotalMinor)}</span>
                     </div>
                     <div className="flex justify-between text-[#6B6155]">
-                      <span>GST ({taxRateBps / 100}%)</span>
+                      <span>GST ({gstPercent}%)</span>
                       <span className="font-bold text-[#241F1A]">{formatMoney(taxMinor)}</span>
                     </div>
                     {serviceChargeMinor > 0 && (
                       <div className="flex justify-between text-[#6B6155]">
-                        <span>Service Charge</span>
+                        <span>Palace Service ({serviceChargePercent}%)</span>
                         <span className="font-bold text-[#241F1A]">{formatMoney(serviceChargeMinor)}</span>
+                      </div>
+                    )}
+                    {roundOffMinor !== 0 && (
+                      <div className="flex justify-between text-[11px] text-[#6B6155]">
+                        <span>Round Off</span>
+                        <span className="font-bold text-[#241F1A]">
+                          {roundOffMinor > 0 ? `+${formatMoney(roundOffMinor)}` : `-${formatMoney(Math.abs(roundOffMinor))}`}
+                        </span>
                       </div>
                     )}
                     <div className="flex justify-between text-base font-bold text-[#241F1A] pt-2 border-t border-[#D4CBBB]">

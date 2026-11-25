@@ -255,13 +255,25 @@ export const dataRepository = {
     guestEmail?: string;
     roomTypeId: string;
     roomId?: string;
+    rateMinor?: number;
     checkIn: string;
     checkOut: string;
     checkInTime?: string;
     checkOutTime?: string;
     partySize: number;
     notes?: string;
+    guestsDetails?: Array<{
+      guest_index: number;
+      full_name: string;
+      phone: string;
+      email?: string | null;
+      dob: string;
+    }>;
     aadhaarDetails?: GuestAadhaarDetail[];
+    depositAmountMinor?: number;
+    paymentMethod?: string;
+    paymentStatus?: string;
+    paymentReference?: string | null;
   }): Reservation {
     const refCode = `BK-${Math.floor(8800 + Math.random() * 1000)}`;
     const rt = roomTypesState.find((t) => t.id === data.roomTypeId);
@@ -273,19 +285,30 @@ export const dataRepository = {
     const gPhone = data.guestPhone || data.phone || '+91 98000 00000';
     const gEmail = data.guestEmail || data.email || `${gName.toLowerCase().replace(/\s+/g, '')}@example.com`;
 
+    const resolvedRateMinor =
+      typeof data.rateMinor === 'number' && data.rateMinor > 0
+        ? data.rateMinor
+        : rt
+        ? rt.base_rate_minor
+        : 650000;
+
     const newRes: Reservation = {
       id: `res-${Date.now()}`,
       property_id: propertyState.id,
       guest_id: `guest-${Date.now()}`,
       room_type_id: data.roomTypeId,
-      room_id: assignedRoom?.id || (roomsState.length > 0 ? roomsState[0].id : null),
+      room_id: assignedRoom?.id || data.roomId || (roomsState.length > 0 ? roomsState[0].id : null),
       check_in: data.checkIn,
       check_out: data.checkOut,
       check_in_time: data.checkInTime || '12:00 PM',
       check_out_time: data.checkOutTime || '11:00 AM',
       party_size: data.partySize,
-      rate_snapshot_minor: rt ? rt.base_rate_minor : 520000,
-      terms_snapshot: 'Standard royal booking guarantee',
+      rate_snapshot_minor: resolvedRateMinor,
+      deposit_amount_minor: data.depositAmountMinor || 0,
+      payment_method: data.paymentMethod || 'pay_at_hotel',
+      payment_status: data.paymentStatus || 'pay_at_hotel',
+      payment_reference: data.paymentReference || null,
+      terms_snapshot: 'Standard royal booking guarantee (Check-in after 12:00 Noon / Check-out before 11:00 AM)',
       status: 'confirmed',
       reference_code: refCode,
       notes: data.notes || null,
@@ -297,6 +320,7 @@ export const dataRepository = {
         email: gEmail,
         created_at: new Date().toISOString(),
       },
+      guests_details: data.guestsDetails || [],
       aadhaar_details: data.aadhaarDetails || [],
     };
 

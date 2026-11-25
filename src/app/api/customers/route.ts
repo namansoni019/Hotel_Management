@@ -22,15 +22,13 @@ export async function GET() {
       orders = dataRepository.getOrders();
     }
 
-    // 2. Fetch real hotel reservations from Firestore & repository
-    let reservations: any[] = [];
+    // 2. Fetch real hotel reservations exclusively from Firestore
+    let reservations: Awaited<ReturnType<typeof reservationsService.getReservations>> = [];
     try {
       reservations = await reservationsService.getReservations();
-    } catch {
-      reservations = dataRepository.getReservations();
-    }
-    if (reservations.length === 0) {
-      reservations = dataRepository.getReservations();
+    } catch (err) {
+      console.warn('Firestore reservations read warning:', err);
+      reservations = [];
     }
 
     // 3. Fetch real table reservations
@@ -99,7 +97,7 @@ export async function GET() {
 
     // ── Process 2: Hotel Room Reservations ──
     for (const res of reservations) {
-      const guestObj = res.guests || res.guest;
+      const guestObj = res.guest;
       const guestName = guestObj?.name || 'Hotel Guest';
       const guestPhone = guestObj?.phone || '';
       const guestEmail = guestObj?.email || '';
@@ -121,7 +119,7 @@ export async function GET() {
       if (guestPhone && !patron.phone) patron.phone = guestPhone;
       if (guestEmail && !patron.email) patron.email = guestEmail;
 
-      const staySpend = Number(res.total_amount_minor || res.rate_snapshot_minor || 0);
+      const staySpend = Number(res.deposit_amount_minor || res.rate_snapshot_minor || 0);
       patron.hotel_spend_minor += staySpend;
       patron.total_spend_minor += staySpend;
       patron.stays_count += 1;
@@ -140,7 +138,7 @@ export async function GET() {
       patron.hotel_stays.push({
         id: res.id,
         reference_code: res.reference_code || `RES-${res.id.slice(0, 6)}`,
-        room_type_name: res.room_types?.name || res.room_type?.name || 'Heritage Suite',
+        room_type_name: res.room_type_name || res.room_type?.name || 'Heritage Suite',
         check_in: res.check_in,
         check_out: res.check_out,
         party_size: res.party_size || 2,

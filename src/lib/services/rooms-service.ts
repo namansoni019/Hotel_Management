@@ -14,67 +14,118 @@ import {
 import { db } from '@/lib/firebase';
 import { dataRepository } from '@/lib/data/repository';
 import type { Room, RoomType, HousekeepingState, AvailabilityResult } from '@/lib/types';
+import { serializeRoomDoc, sortRoomsByNumber } from '@/lib/utils/room-serializer';
 
 export const roomsService = {
   async getRoomTypes(): Promise<RoomType[]> {
-    // Room categories are kept streamlined directly with rooms; fallback to standard repository types
+    // Derive room types directly from live `rooms` collection (all room type details live inside `rooms`)
+    try {
+      const liveRooms = await this.getRoomsFromDbOnly();
+      if (liveRooms.length > 0) {
+        const grouped = new Map<string, RoomType>();
+        for (const room of liveRooms) {
+          const rtId = room.room_type_id || room.id;
+          const existing = grouped.get(rtId);
+          if (existing) {
+            existing.total_rooms = (existing.total_rooms || 0) + 1;
+          } else if (room.room_type) {
+            grouped.set(rtId, {
+              ...room.room_type,
+              id: rtId,
+              total_rooms: 1,
+            });
+          }
+        }
+        if (grouped.size > 0) {
+          return Array.from(grouped.values());
+        }
+      }
+    } catch (err) {
+      console.warn('Derived room types from rooms collection error:', err);
+    }
+
     return dataRepository.getRoomTypes();
   },
 
   async getRoomTypeById(id: string): Promise<RoomType | null> {
+    const roomMatch = await this.getRoomById(id);
+    if (roomMatch?.room_type) {
+      return roomMatch.room_type;
+    }
+
     const all = dataRepository.getRoomTypes();
     return all.find((r) => r.id === id) || null;
   },
 
+  async getRoomsFromDbOnly(): Promise<Room[]> {
+    const colRef = collection(db, 'rooms');
+    const snap = await getDocs(colRef);
+    if (snap.empty) return [];
+    const list = snap.docs
+      .map((d) => serializeRoomDoc(d.id, d.data() as Record<string, unknown>))
+      .filter((r) => r.is_active !== false);
+    return sortRoomsByNumber(list);
+  },
+
   async getRooms(): Promise<Room[]> {
-    const roomTypes = dataRepository.getRoomTypes();
     try {
-      const colRef = collection(db, 'rooms');
-      const snap = await getDocs(colRef);
-      if (!snap.empty) {
-        return snap.docs.map((d) => {
-          const data = d.data();
-          const typeId = data.room_type_id || roomTypes[0]?.id;
-          const matchedType = roomTypes.find((rt) => rt.id === typeId) || roomTypes[0];
-          const isNonDeluxe =
-            typeId === 'd0000000-0000-0000-0000-000000000002' ||
-            (data.room_type_name && data.room_type_name.toLowerCase().includes('non')) ||
-            (data.room_category && data.room_category.toLowerCase().includes('non'));
-
-          const categoryName = data.room_category || data.room_type_name || matchedType.name;
-          const photos = data.images || data.photos || matchedType.photos || [];
-
-          return {
-            id: d.id,
-            room_number: data.room_number,
-            room_type_id: typeId,
-            housekeeping_state: data.housekeeping_state || 'available',
-            notes: data.notes || null,
-            images: photos,
-            photos: photos,
-            room_category: categoryName,
-            room_type_name: categoryName,
-            category_badge: data.category_badge || (isNonDeluxe ? 'HERITAGE STANDARD' : 'ROYAL LUXURY'),
-            base_rate_minor: data.base_rate_minor ?? matchedType.base_rate_minor,
-            price_per_night: data.price_per_night ?? Math.round((data.base_rate_minor ?? matchedType.base_rate_minor) / 100),
-            capacity: data.capacity ?? matchedType.capacity,
-            bed_type: data.bed_type || (isNonDeluxe ? 'Classic Double Bed' : 'Plush King Bed'),
-            amenities: data.amenities || matchedType.amenities,
-            description: data.description || matchedType.description,
-            room_type: data.room_type || {
-              ...matchedType,
-              name: categoryName,
-              base_rate_minor: data.base_rate_minor ?? matchedType.base_rate_minor,
-              amenities: data.amenities || matchedType.amenities,
-              photos: photos,
-            },
-          } as Room;
-        });
+      const dbRooms = await this.getRoomsFromDbOnly();
+      if (dbRooms.length > 0) {
+        return dbRooms;
       }
     } catch (err) {
       console.warn('Firestore getRooms fallback:', err);
     }
-    return dataRepository.getRooms();
+
+    const repoRooms = dataRepository.getRooms();
+    if (repoRooms.length > 0) {
+      return repoRooms.map((r) =>
+        serializeRoomDoc(r.id, r as unknown as Record<string, unknown>)
+      );
+    }
+
+    // Map repository room types as fallback chamber entries if rooms state is empty
+    return dataRepository.getRoomTypes().map((rt, idx) =>
+      serializeRoomDoc(rt.id, {
+        id: rt.id,
+        room_number: String(101 + idx),
+        room_type_id: rt.id,
+        room_category: rt.name,
+        room_type_name: rt.name,
+        name: rt.name,
+        description: rt.description,
+        capacity: rt.capacity,
+        base_rate_minor: rt.base_rate_minor,
+        amenities: rt.amenities,
+        photos: rt.photos,
+        housekeeping_state: 'available',
+        room_type: rt,
+      })
+    );
+  },
+
+  async getRoomById(id: string): Promise<Room | null> {
+    try {
+      // 1. Direct lookup on `rooms/{id}`
+      const docRef = doc(db, 'rooms', id);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        return serializeRoomDoc(snap.id, snap.data() as Record<string, unknown>);
+      }
+
+      // 2. Fallback lookup inside `rooms` collection (matches internal `id`, `room_type_id`, or `room_number`)
+      const dbRooms = await this.getRoomsFromDbOnly();
+      const matched = dbRooms.find(
+        (r) => r.id === id || r.room_type_id === id || r.room_number === id
+      );
+      if (matched) return matched;
+    } catch (err) {
+      console.warn('Firestore getRoomById fallback:', err);
+    }
+
+    // 3. Fallback to repository
+    const fallbackRooms = await this.getRooms();
+    return fallbackRooms.find((r) => r.id === id || r.room_type_id === id) || null;
   },
 
   async addRoom(roomData: {

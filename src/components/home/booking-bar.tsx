@@ -160,7 +160,16 @@ function addDays(d: Date, days: number): Date {
   return res;
 }
 
-export function BookingBar() {
+export interface BookingBarInitialSearch {
+  checkIn?: string;
+  checkOut?: string;
+  adults?: string | number;
+  children?: string | number;
+  pets?: string | number;
+  rooms?: string | number;
+}
+
+export function BookingBar({ initialSearch }: { initialSearch?: BookingBarInitialSearch } = {}) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -169,14 +178,26 @@ export function BookingBar() {
   const [activeTab, setActiveTab] = useState<TabType>('rooms');
 
   // Rooms Booking State
-  const [checkIn, setCheckIn] = useState('');
-  const [checkOut, setCheckOut] = useState('');
-  const [adults, setAdults] = useState(2);
-  const [children, setChildren] = useState(0);
-  const [pets, setPets] = useState(0);
+  const [checkIn, setCheckIn] = useState(initialSearch?.checkIn || '');
+  const [checkOut, setCheckOut] = useState(initialSearch?.checkOut || '');
+  const [adults, setAdults] = useState(() => {
+    const val = Number(initialSearch?.adults);
+    return Number.isFinite(val) && val > 0 ? val : 2;
+  });
+  const [children, setChildren] = useState(() => {
+    const val = Number(initialSearch?.children);
+    return Number.isFinite(val) && val >= 0 ? val : 0;
+  });
+  const [pets, setPets] = useState(() => {
+    const val = Number(initialSearch?.pets);
+    return Number.isFinite(val) && val >= 0 ? val : 0;
+  });
 
   // Room count state: default is 1 room for 2 guests; auto-increments to 2 at 4 guests
-  const [rooms, setRooms] = useState(1);
+  const [rooms, setRooms] = useState(() => {
+    const val = Number(initialSearch?.rooms);
+    return Number.isFinite(val) && val > 0 ? val : 1;
+  });
   const [userHasCustomizedRooms, setUserHasCustomizedRooms] = useState(false);
 
   // Party Hall Booking State
@@ -219,9 +240,9 @@ export function BookingBar() {
     const threeDaysLater = toYMD(addDays(now, 3));
     const fourteenDaysLater = toYMD(addDays(now, 14));
 
-    setCheckIn(today);
-    setCheckOut(threeDaysLater);
-    setHallDate(fourteenDaysLater);
+    setCheckIn((prev) => prev || today);
+    setCheckOut((prev) => prev || threeDaysLater);
+    setHallDate((prev) => prev || fourteenDaysLater);
     setCalendarMonth(new Date(now.getFullYear(), now.getMonth(), 1));
 
     const checkIsMobile = () => {
@@ -1150,18 +1171,41 @@ export function BookingBar() {
         }}
       >
         {activeTab === 'rooms' ? (
-          <form
-            action="/rooms"
-            method="GET"
-            className="grid grid-cols-2 lg:grid-cols-[1fr_auto_1fr_1.25fr_auto] gap-[5.2px] sm:gap-3 items-center"
-          >
-            <input type="hidden" name="checkIn" value={checkIn} />
-            <input type="hidden" name="checkOut" value={checkOut} />
-            <input type="hidden" name="guests" value={guestsSummary} />
-            <input type="hidden" name="adults" value={adults} />
-            <input type="hidden" name="children" value={children} />
-            <input type="hidden" name="pets" value={pets} />
-            <input type="hidden" name="rooms" value={rooms} />
+          <search>
+            <form
+              action="/hotel#hotel-chambers"
+              method="GET"
+              aria-label="Search palace chambers"
+              onSubmit={(e) => {
+                e.preventDefault();
+                closeTooltipWithAnimation();
+                const params = new URLSearchParams();
+                if (checkIn) params.set('checkIn', checkIn);
+                if (checkOut) params.set('checkOut', checkOut);
+                if (guestsSummary) params.set('guests', guestsSummary);
+                params.set('adults', String(adults));
+                params.set('children', String(children));
+                params.set('pets', String(pets));
+                params.set('rooms', String(rooms));
+                params.set('search', '1');
+                router.push(`/hotel?${params.toString()}#hotel-chambers`);
+                const chambersEl = document.getElementById('hotel-chambers');
+                if (chambersEl) {
+                  requestAnimationFrame(() => {
+                    chambersEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  });
+                }
+              }}
+              className="grid grid-cols-2 lg:grid-cols-[1fr_auto_1fr_1.25fr_auto] gap-[5.2px] sm:gap-3 items-center"
+            >
+              <input type="hidden" name="checkIn" value={checkIn} />
+              <input type="hidden" name="checkOut" value={checkOut} />
+              <input type="hidden" name="guests" value={guestsSummary} />
+              <input type="hidden" name="adults" value={adults} />
+              <input type="hidden" name="children" value={children} />
+              <input type="hidden" name="pets" value={pets} />
+              <input type="hidden" name="rooms" value={rooms} />
+              <input type="hidden" name="search" value="1" />
 
             {/* 1. Check In Tile (Col-span 1 on mobile: Check In & Check Out in a row) */}
             <div
@@ -1305,6 +1349,7 @@ export function BookingBar() {
               </button>
             </div>
           </form>
+          </search>
         ) : (
           /* ── Content Area: Party Hall Form ── */
           <form

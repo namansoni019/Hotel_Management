@@ -1,15 +1,19 @@
 import { Suspense } from 'react';
 import Image from 'next/image';
 import { BookingBar } from '@/components/home/booking-bar';
-import { DeluxeRoomsSection } from '@/components/home/deluxe-rooms-section';
-import { PartyHallSection } from '@/components/home/party-hall-section';
 import {
-  Sparkles,
+  DeluxeRoomsSection,
+  type HotelSearchState,
+} from '@/components/home/deluxe-rooms-section';
+import { PartyHallSection } from '@/components/home/party-hall-section';
+import { roomsService } from '@/lib/services/rooms-service';
+import {
   Landmark,
   Armchair,
   Crown,
-  Play,
 } from 'lucide-react';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: 'Hotel | Rajmahal Heritage Grand — Deluxe Rooms & Grand Celebration Hall',
@@ -17,10 +21,20 @@ export const metadata = {
     'Experience a royal stay in the heart of Rajasthan at Rajmahal Heritage Grand. Heritage Deluxe Rooms with Wi-Fi, AC, 24x7 room service, in-room dining, and valet parking. Grand Party Hall for 25-50 guests with customizable décor.',
 };
 
-export default function HotelPage() {
+interface HotelPageProps {
+  searchParams?: Promise<HotelSearchState>;
+}
+
+export default async function HotelPage({ searchParams }: HotelPageProps) {
+  const [resolvedSearchParams, allRooms] = await Promise.all([
+    searchParams ? searchParams : Promise.resolve({} as HotelSearchState),
+    roomsService.getRooms(),
+  ]);
+
+  const bookingBarKey = `${resolvedSearchParams.checkIn || ''}-${resolvedSearchParams.checkOut || ''}-${resolvedSearchParams.adults || ''}-${resolvedSearchParams.children || ''}-${resolvedSearchParams.pets || ''}-${resolvedSearchParams.rooms || ''}`;
+
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#fbf5e9]" />}>
-      <div className="flex flex-col w-full text-[#151c1a]" style={{ backgroundColor: 'var(--cream, #fbf5e9)' }}>
+      <div className="flex flex-col w-full text-[#2B2018] bg-[#FAF7F2]">
         {/* ── 1. HOTEL HERO SECTION (EXACT MOCKUP MATCH) ── */}
         <section className="relative z-20 min-h-[440px] lg:min-h-[720px] flex flex-col justify-between mt-0">
           {/* Background Palace Image with Corner Radius & Framing Inset */}
@@ -79,16 +93,17 @@ export default function HotelPage() {
 
           {/* Overlapping Floating Booking Widget with Rooms & Party Hall tabs */}
           <div className="relative z-30 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full -mb-10 sm:-mb-14">
-            <BookingBar />
+            <BookingBar key={bookingBarKey} initialSearch={resolvedSearchParams} />
           </div>
         </section>
 
-        {/* ── 2. OUR ROOMS & SUITES SECTION (DELUXE ONLY, WIFI, AC, 24X7 ROOM SERVICE, IN-ROOM DINING, VALET PARKING) ── */}
-        <DeluxeRoomsSection />
+        {/* ── 2. OUR ROOMS & SUITES SECTION (LIVE FIRESTORE CHAMBERS + HOTEL SEARCH RESULTS) ── */}
+        <Suspense fallback={<div className="py-24 bg-[#FAF7F2]" />}>
+          <DeluxeRoomsSection initialRooms={allRooms} searchState={resolvedSearchParams} />
+        </Suspense>
 
         {/* ── 3. GRAND PARTY HALL (25-50 GUESTS, BIRTHDAY, ANNIVERSARY, DATE NIGHT, CORPORATE, SOCIAL FUNCTIONS, CUSTOMIZABLE DÉCOR) ── */}
         <PartyHallSection />
       </div>
-    </Suspense>
   );
 }
