@@ -56,20 +56,25 @@ const DINING_VENUES: DiningVenueCard[] = [
 /** Light Minimal Home Dining showcase with IntersectionObserver scroll reveal and subtle plate scroll state. */
 export function DiningSection() {
   const sectionRef = useRef<HTMLElement>(null);
-  const [headerVisible, setHeaderVisible] = useState(
-    () => typeof IntersectionObserver === 'undefined'
-  );
+  const [headerVisible, setHeaderVisible] = useState(false);
   const [activeVenueIndex, setActiveVenueIndex] = useState<number>(0);
-  const [cardVisible, setCardVisible] = useState<[boolean, boolean]>(() => {
-    const fallback = typeof IntersectionObserver === 'undefined';
-    return [fallback, fallback];
-  });
+  const [cardVisible, setCardVisible] = useState<[boolean, boolean]>([false, false]);
   const [scrollDepth, setScrollDepth] = useState(0);
 
   useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined') return;
     const sectionEl = sectionRef.current;
     if (!sectionEl) return;
+
+    if (
+      typeof IntersectionObserver === 'undefined' ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      const rafId = window.requestAnimationFrame(() => {
+        setHeaderVisible(true);
+        setCardVisible([true, true]);
+      });
+      return () => window.cancelAnimationFrame(rafId);
+    }
 
     const headerObserver = new IntersectionObserver(
       ([entry]) => {

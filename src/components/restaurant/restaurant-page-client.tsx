@@ -154,13 +154,19 @@ function useInView(options?: {
   initialInView?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [isInView, setIsInView] = useState<boolean>(
-    () => Boolean(options?.initialInView) || typeof IntersectionObserver === 'undefined'
-  );
+  const [isInView, setIsInView] = useState<boolean>(() => Boolean(options?.initialInView));
 
   useEffect(() => {
     const el = ref.current;
-    if (!el || isInView || typeof IntersectionObserver === 'undefined') return;
+    if (!el || isInView) return;
+
+    if (
+      typeof IntersectionObserver === 'undefined' ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      const rafId = window.requestAnimationFrame(() => setIsInView(true));
+      return () => window.cancelAnimationFrame(rafId);
+    }
 
     const observer = new IntersectionObserver(
       ([entry]) => {
